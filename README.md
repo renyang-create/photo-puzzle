@@ -318,10 +318,22 @@ pnpm dev
 
 如果不想为 Vercel 的账号手机验证折腾，Netlify 的免费档可以完整跑起这个项目：
 
-* **适配器自动安装**：Netlify 检测到 Next.js 后会使用 OpenNext 官方的 Next.js 适配器
-  （`@netlify/plugin-nextjs`，v5 起支持 Next.js 16），把 SSR / API 路由 / Server Actions
-  打包成 **Node 运行时的 Netlify Functions**，因此服务端的 `sharp` 可以正常工作。
-  官方建议**不要**手动固定适配器版本，让平台自动跟进安全修复。
+* **适配器必须显式声明**：Next.js 由 OpenNext 官方适配器 `@netlify/plugin-nextjs`（v5，
+  支持 Next.js 16）接管，把 SSR / API 路由 / Server Actions 打包成 **Node 运行时的
+  Netlify Functions**，因此服务端的 `sharp` 可以正常工作。
+
+  ⚠️ 实测教训：**首次部署时 Netlify 的「框架自动识别」没有生效**，它直接把 `.next`
+  当成普通静态目录发布 —— 而 `.next` 根目录没有 `index.html`，于是首页、`public/` 下
+  的静态文件、全部 API 一起返回 Netlify 的 `404 Page not found`（**不是应用报错**，
+  很容易误判成代码问题）。因此在 `netlify.toml` 里显式声明，不再依赖自动识别：
+
+  ```toml
+  [[plugins]]
+    package = "@netlify/plugin-nextjs"
+  ```
+
+  版本在 `package.json` 里用 `^` 放宽，与官方「不要写死适配器版本，让安全修复自动跟进」
+  的建议一致。
 * `netlify.toml` 已固定 `NODE_VERSION = "22"`（`@supabase/supabase-js` 2.x 要求 Node ≥ 22）
   与 `publish = ".next"`。
 * 环境变量仍在**控制台**配置（`Site configuration → Environment variables`），
