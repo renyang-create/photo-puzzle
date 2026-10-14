@@ -1,69 +1,100 @@
-import Image from "next/image";
+import Link from "next/link";
+import { ImageIcon, Puzzle, ShieldCheck } from "lucide-react";
 
-export default function Home() {
+import { HiddenAdminTrigger } from "@/components/hidden-admin-trigger";
+import { LocalStats } from "@/components/local-stats";
+import { ShareButton } from "@/components/share-button";
+import { buttonVariants } from "@/components/ui/button";
+import { publicEnv } from "@/lib/env.public";
+import { cn } from "@/lib/utils";
+
+/**
+ * 封面页。
+ * 标题连点 5 次 → /admin（隐藏入口；真正的权限判定在服务端）。
+ */
+export default function CoverPage() {
+  const configured = Boolean(
+    publicEnv.supabaseUrl && publicEnv.supabaseAnonKey,
+  );
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
+    <main className="relative flex flex-1 flex-col items-center justify-center overflow-hidden px-5 py-10">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-70"
+        style={{
+          backgroundImage:
+            "radial-gradient(60% 40% at 20% 10%, rgba(167,139,250,0.28), transparent), radial-gradient(50% 40% at 85% 30%, rgba(56,189,248,0.22), transparent)",
+        }}
+      />
+
+      <div className="relative z-10 w-full max-w-md">
+        <div className="mb-8 flex items-center gap-2 text-violet-200/80">
+          <Puzzle className="size-4" />
+          <span className="text-xs tracking-[0.3em] uppercase">
+            {publicEnv.siteName}
+          </span>
+        </div>
+
+        <HiddenAdminTrigger className="block w-full text-left">
+          <h1 className="text-4xl leading-tight font-semibold tracking-tight">
+            解锁
+            <span className="bg-gradient-to-r from-violet-300 to-sky-300 bg-clip-text text-transparent">
+              {publicEnv.nickname}
+            </span>
+            的照片
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+        </HiddenAdminTrigger>
+
+        <p className="text-muted-foreground mt-3 text-sm">
+          每一张都被切成了拼图。拼好，才看得到它。
+          <br />
+          点开就能玩，不用下载，也不用注册。
+        </p>
+
+        <div className="mt-8 flex flex-col gap-3">
+          <Link href="/play" className={cn(buttonVariants({ size: "lg" }), "w-full")}>
+            开始挑战
+          </Link>
+          <div className="flex gap-3">
+            <Link
+              href="/gallery"
+              className={cn(buttonVariants({ variant: "secondary" }), "flex-1")}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+              我的相册
+            </Link>
+            <ShareButton className="flex-1" label="分享给朋友" />
+          </div>
+        </div>
+
+        <div className="mt-8">
+          <LocalStats />
+        </div>
+
+        {!configured && (
+          <div className="mt-8 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-xs leading-relaxed text-amber-100">
+            <p className="mb-2 flex items-center gap-2 font-medium">
+              <ShieldCheck className="size-4" /> 还没接上 Supabase
+            </p>
+            <p>
+              把 <code>.env.example</code> 复制成 <code>.env.local</code>，填上
+              <code> NEXT_PUBLIC_SUPABASE_URL</code>、
+              <code> NEXT_PUBLIC_SUPABASE_ANON_KEY</code>、
+              <code> SUPABASE_SERVICE_ROLE_KEY</code> 与
+              <code> SESSION_PASSWORD</code>，
+              然后执行 <code>supabase db push</code> 应用 migration。
+            </p>
+          </div>
+        )}
+
+        <div className="text-muted-foreground mt-10 flex items-start gap-2 text-[11px] leading-relaxed">
+          <ImageIcon className="mt-0.5 size-3.5 shrink-0" />
+          <p>
+            照片保存在私有 bucket，只有服务端签发的 5 分钟链接能访问；
+            拼图用的是缩略图，原图要解锁之后才会签发。
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }
