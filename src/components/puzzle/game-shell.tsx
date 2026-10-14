@@ -7,14 +7,21 @@ import { toast } from "sonner";
 
 import { DifficultyPicker } from "@/components/puzzle/difficulty-picker";
 import { PuzzleBoard } from "@/components/puzzle/puzzle-board";
+import { SoundToggle } from "@/components/sound-toggle";
 import {
   UnlockDialog,
   type UnlockSummary,
 } from "@/components/puzzle/unlock-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useLocalProgress } from "@/hooks/use-local-progress";
+import { audio } from "@/lib/audio";
 import { apiGet, apiPost } from "@/lib/client-api";
-import { applyUnlock, readProgress, writeProgress } from "@/lib/local-store";
+import {
+  applyUnlock,
+  readProgress,
+  readSoundEnabled,
+  writeProgress,
+} from "@/lib/local-store";
 import { DEFAULT_DIFFICULTY, formatMilliseconds, type Difficulty } from "@/lib/puzzle";
 import { cn } from "@/lib/utils";
 import type { PlayablePhoto, UnlockResult } from "@/lib/types";
@@ -100,6 +107,18 @@ export function GameShell() {
     };
   }, [fetchPhoto]);
 
+  /**
+   * 音频生命周期：
+   *   进入拼图页 → 把 localStorage 里的开关同步给音频管理器，并尝试起播 BGM
+   *   （被浏览器自动播放策略拦截时，音频管理器会挂一次性 pointerdown/keydown，等你碰屏幕再起播）
+   *   离开页面 → 暂停并复位，避免路由切换后残留播放
+   */
+  useEffect(() => {
+    audio.setEnabled(readSoundEnabled());
+    audio.enterGame();
+    return () => audio.exitGame();
+  }, []);
+
   const handleDifficulty = useCallback((next: Difficulty) => {
     setDifficultyOverride(next);
     setDialogOpen(false);
@@ -172,26 +191,30 @@ export function GameShell() {
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 px-4 pt-6 pb-10">
-      <header className="flex items-center justify-between">
-        <div>
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <p className="text-muted-foreground text-xs tracking-widest uppercase">
             photo puzzle
           </p>
-          <h1 className="text-lg font-semibold">
+          <h1 className="truncate text-lg font-semibold">
             {photo ? photo.title : "准备中…"}
           </h1>
         </div>
-        <div className="text-right">
-          <p
-            className="font-mono text-2xl font-semibold tabular-nums"
-            data-testid="timer"
-          >
-            {formatMilliseconds(elapsed)}
-          </p>
-          <p className="text-muted-foreground text-[11px]">
-            已解锁 {progress?.unlocked.length ?? 0} 张 · 累计{" "}
-            {progress?.total ?? 0} 次
-          </p>
+        <div className="flex shrink-0 items-start gap-2">
+          <div className="text-right">
+            <p
+              className="font-mono text-2xl font-semibold tabular-nums"
+              data-testid="timer"
+            >
+              {formatMilliseconds(elapsed)}
+            </p>
+            <p className="text-muted-foreground text-[11px]">
+              已解锁 {progress?.unlocked.length ?? 0} 张 · 累计{" "}
+              {progress?.total ?? 0} 次
+            </p>
+          </div>
+          {/* 右上角喇叭：开着是喇叭，关掉是喇叭加一斜杠 */}
+          <SoundToggle />
         </div>
       </header>
 

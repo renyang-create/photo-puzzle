@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { audio } from "@/lib/audio";
 import {
   MIN_TOUCH_TARGET_PX,
   createShuffledOrder,
@@ -140,7 +141,8 @@ export function PuzzleBoard({
           startedAtRef.current === null
             ? 0
             : performance.now() - startedAtRef.current;
-        // 留一点时间播「发光 + 缩放」，再弹解锁弹窗
+        // 完成音立即响（会同时把 BGM 压低），留一点时间播「发光 + 缩放」再弹解锁弹窗
+        audio.playComplete();
         window.setTimeout(() => finish(elapsed), 620);
       }
     },
@@ -286,6 +288,8 @@ export function PuzzleBoard({
                       startY: event.clientY,
                       moved: false,
                     };
+                    // 「按住」音效（点选与拖拽起手都会响）
+                    audio.playPress();
                   }}
                   onPointerMove={(event) => {
                     const state = pointerRef.current;
@@ -305,6 +309,8 @@ export function PuzzleBoard({
                     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
                       event.currentTarget.releasePointerCapture(event.pointerId);
                     }
+                    // 「松开」音效：交换成功时听着就像一块落位
+                    audio.playRelease();
                     if (!state.moved) {
                       handleTap(slot);
                       return;

@@ -249,7 +249,7 @@ supabase/migrations/
 2. **Vercel**：Import Git 仓库（framework 自动识别 Next.js），或直接 `vercel --prod`。
 3. **环境变量**：把第 2 节表格里的变量填进 Vercel Project Settings；`NEXT_PUBLIC_SITE_URL` 填生产域名（OG 卡片与分享链接用它）。
 4. **`.env.local` 不要提交**（已在 `.gitignore`），service role key 只存在于 Vercel 的 Environment Variables。
-5. 部署后逐条走第 9 节的验收清单。
+5. 部署后逐条走第 10 节的验收清单。
 
 `vercel.json` 里固定了 region 并给 `/api/*` 加了 `X-Robots-Tag: noindex`。
 一般**不需要额外 rewrite**：App Router 的路由就是最终路径；只有当你把游戏挂到子路径（例如 `https://me.com/puzzle`）时才需要配 rewrite，同时把 `NEXT_PUBLIC_SITE_URL` 改成子路径前缀。
@@ -284,7 +284,26 @@ pnpm dev
 
 ---
 
-## 9. 验收清单
+## 9. 声音（背景音乐与音效）
+
+| 用途 | 文件 | 触发时机 |
+| --- | --- | --- |
+| 背景音乐（`loop`） | `public/audio/bgm.mp3` | 进入 `/play` 起播，离开页面暂停并复位 |
+| 按住 / 松开 | `public/audio/bubble-pop.mp3` | `pointerdown` 响一次、`pointerup` 再响一次（点选与拖拽都算） |
+| 拼图完成 | `public/audio/ding.mp3` | 最后一次交换被判定为完成时立即响 |
+
+* **右上角喇叭按钮**：开启显示 `Volume2`（喇叭 + 声波），关闭显示 `VolumeOff`（喇叭 + 一斜杠）。
+  状态存在 `localStorage` 的 `photoPuzzle.soundEnabled`（`1` / `0`），刷新后保持。
+* **有音效时自动压低 BGM**：`0.35 → 0.12`（60ms 内让位），音效结束后 200ms 平滑恢复；「叮」的压低时长
+  1.6s，比普通音效的 0.7s 更长。所有常量集中在 `src/lib/audio.ts` 顶部，改这里就能调手感。
+* 音效用 3 个 `Audio` 对象做对象池，连续快按不会互相打断；BGM 是单例，路由切换不会叠音。
+* ⚠️ **浏览器禁止无交互自动播放**：进入 `/play` 后先尝试 `play()`，被拒绝就挂一次性
+  `pointerdown` / `keydown` 监听，等你第一次碰屏幕再起播。这是浏览器策略，绕不过去。
+* 想让朋友进来默认安静，把 `photoPuzzle.soundEnabled` 预置成 `"0"` 即可（喇叭按钮仍可当场打开）。
+
+---
+
+## 10. 验收清单
 
 - [x] `pnpm dev` 本地可跑（未配 Supabase 时首页显示配置提示而不是白屏）
 - [x] 管理员登录后上传照片，朋友端能随机抽到
@@ -303,11 +322,15 @@ pnpm dev
 - [x] 动态 OG 卡片：Node.js runtime + 固定模板 + 只传 `photoId`
 - [x] CVE-2026-94545 防护：版本高于修复线 + 文本白名单 + 固定模板
 - [x] 前端 canvas 压缩：>10MB 或非 JPEG/WebP/AVIF 时压到长边 ≤2000px
-- [x] `pnpm lint` / `pnpm typecheck` / `pnpm build` / `pnpm test` 全绿（45 个单测）
+- [x] 进入拼图页后背景音乐循环播放；右上角喇叭可静音（关闭时图标带斜杠），状态刷新后保持
+- [x] 按住拼图块与松开时各有泡泡音效；拼好照片时响「叮」
+- [x] 音效播放期间 BGM 自动压低（0.35 → 0.12），音效结束 200ms 内平滑恢复
+- [x] 静音后 BGM 与音效同时停止；三个 mp3 都在 `public/audio/` 下随站点静态提供
+- [x] `pnpm lint` / `pnpm typecheck` / `pnpm build` / `pnpm test` 全绿（55 个单测）
 
 ---
 
-## 10. 测试
+## 11. 测试
 
 ```bash
 pnpm test        # Vitest：拼图打乱与胜负判定、本地记录、入参校验、会话 JWT、压缩尺寸
@@ -359,10 +382,12 @@ set-cookie: pp_anon=…; Path=/; Max-Age=31536000; Secure; HttpOnly; SameSite=la
 * `local-store.test.ts`：五个 localStorage key 的契约、最佳成绩不被更慢的成绩覆盖、脏数据降级、幂等
 * `security.test.ts`：匿名 / 管理员 JWT 的签名镜像与 kind 隔离、被篡改的 token 失效、路径穿越与 SVG MIME 被拒、OG 文本白名单
 * `image-client.test.ts`：长边 2000 等比缩放、只缩不放、极端长条图不为 0
+* `audio.test.ts`：三个 mp3 **真实存在于 `public/audio/`**（资源路径契约）、压低音量必须小于默认音量、
+  静音时恒为 0、`fadeVolume` 插值两端与越界夹取、「叮」的压低时长长于普通音效、开关状态的脏值解析
 
 ---
 
-## 11. 目录速览
+## 12. 目录速览
 
 ```
 src/
@@ -377,21 +402,23 @@ src/
 │  ├─ gallery/gallery-wall.tsx
 │  ├─ admin/                      admin-console / admin-upload-form
 │  ├─ ui/                         shadcn/ui（CLI 生成）
-│  └─ share-button / hidden-admin-trigger / local-stats
-├─ hooks/use-local-progress.ts    useSyncExternalStore 订阅 localStorage
+│  └─ share-button / sound-toggle / hidden-admin-trigger / local-stats
+├─ hooks/                         use-local-progress / use-sound-enabled（useSyncExternalStore 订阅 localStorage）
+├─ public/audio/                  bgm.mp3（循环）· bubble-pop.mp3（按住/松开）· ding.mp3（完成）
 ├─ lib/
 │  ├─ supabase/{client,server,admin}.ts
 │  ├─ session-core.ts / session.ts   匿名与管理员 cookie
 │  ├─ admin-auth.ts                  bcrypt 比对 + Supabase Auth 白名单
 │  ├─ photos.service.ts              抽照片 / 相册 / 解锁
 │  ├─ storage.ts                     createSignedUrl / createSignedUploadUrl / 对象读写
+│  ├─ audio.ts                       BGM / 音效 / 压低策略（音量常量都在这里）
 │  ├─ image-server.ts (sharp) / image-client.ts (canvas)
 │  ├─ puzzle.ts / local-store.ts / validation.ts / http.ts
 │  └─ env.public.ts / env.server.ts / database.types.ts / types.ts
 └─ middleware.ts                  Supabase session 刷新 + 匿名 cookie 签发
 ```
 
-## 12. 已知限制
+## 13. 已知限制
 
 * **进程内限流**：单实例有效。Vercel 多实例/多 region 下请换 Upstash Redis（`@upstash/ratelimit`），改动点集中在 `src/lib/http.ts`。
 * **OG 中文字体**：Satori 只支持 TTF/OTF/WOFF（不支持 woff2）。默认从 CDN 拉 Noto Sans SC SubsetOTF 并缓存；拉取失败时卡片自动退化为纯英文文案，不会 500。可用 `OG_FONT_URL` 指向自己的字体文件（例如放进 `public/`）。

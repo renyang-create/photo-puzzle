@@ -12,6 +12,8 @@ export const STORAGE_KEYS = {
   bestTimes: "photoPuzzle.bestTimes",
   total: "photoPuzzle.total",
   lastDifficulty: "photoPuzzle.lastDifficulty",
+  /** 声音开关（右上角喇叭），默认开 */
+  soundEnabled: "photoPuzzle.soundEnabled",
 } as const;
 
 export type BestTimes = Record<string, Partial<Record<Difficulty, number>>>;
@@ -232,6 +234,61 @@ export function parseProgressSnapshot(snapshot: string | null): LocalProgress | 
 function emitProgressChange(): void {
   cachedSnapshot = null;
   listeners.forEach((listener) => listener());
+}
+
+/* ------------------------------------------------------------------ */
+/* 声音开关（右上角喇叭）                                                */
+/* 复用同一套订阅机制，所以拼图页与任何其他组件读到的是同一份状态。        */
+/* ------------------------------------------------------------------ */
+
+let cachedSoundSnapshot: string | null = null;
+
+/** 纯函数：localStorage 里读到的原始值 → 布尔（缺省视为开启） */
+export function resolveSoundEnabled(raw: unknown): boolean {
+  if (raw === null || raw === undefined || raw === "") return true;
+  return raw !== "0" && raw !== "false";
+}
+
+export function readSoundEnabled(): boolean {
+  const storage = safeStorage();
+  if (!storage) return true;
+  return resolveSoundEnabled(storage.getItem(STORAGE_KEYS.soundEnabled));
+}
+
+export function writeSoundEnabled(enabled: boolean): void {
+  const storage = safeStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(STORAGE_KEYS.soundEnabled, enabled ? "1" : "0");
+    cachedSoundSnapshot = null;
+    listeners.forEach((listener) => listener());
+  } catch {
+    /* 隐私模式下忽略 */
+  }
+}
+
+export function subscribeSound(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  listeners.add(onStoreChange);
+  return () => {
+    listeners.delete(onStoreChange);
+  };
+}
+
+export function getSoundSnapshot(): string | null {
+  if (typeof window === "undefined") return null;
+  const value = readSoundEnabled() ? "1" : "0";
+  if (value !== cachedSoundSnapshot) cachedSoundSnapshot = value;
+  return cachedSoundSnapshot;
+}
+
+export function getServerSoundSnapshot(): null {
+  return null;
+}
+
+export function parseSoundSnapshot(snapshot: string | null): boolean {
+  if (snapshot === null) return true;
+  return snapshot === "1";
 }
 
 export function clearProgress(): void {

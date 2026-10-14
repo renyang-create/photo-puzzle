@@ -9,13 +9,14 @@ import {
 } from "@/lib/local-store";
 
 describe("localStorage key 契约", () => {
-  it("五个 key 与文档/验收一致（改名属于破坏性变更）", () => {
+  it("key 与文档/验收一致（改名属于破坏性变更）", () => {
     expect(STORAGE_KEYS).toEqual({
       deviceId: "photoPuzzle.deviceId",
       unlocked: "photoPuzzle.unlocked",
       bestTimes: "photoPuzzle.bestTimes",
       total: "photoPuzzle.total",
       lastDifficulty: "photoPuzzle.lastDifficulty",
+      soundEnabled: "photoPuzzle.soundEnabled",
     });
   });
 });
