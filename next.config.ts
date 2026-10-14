@@ -1,3 +1,5 @@
+import os from "node:os";
+
 import type { NextConfig } from "next";
 
 function supabaseOrigin(): string {
@@ -29,7 +31,38 @@ const contentSecurityPolicy = [
   "worker-src 'self' blob:",
 ].join("; ");
 
+/**
+ * 开发模式允许的额外来源。
+ *
+ * Next.js 从 15.3 起会在 dev 下拦截「非 localhost 来源」对前端资源（/_next/*）的请求，
+ * 表现是：手机用 http://192.168.x.x:3000 打开页面能拿到 HTML，但所有 JS 都是 403，
+ * 页面卡在服务端渲染出来的加载文案上（例如「正在校验管理员身份…」）。
+ *
+ * 这里自动把本机所有非回环 IPv4 地址加进白名单（局域网 IP、手机热点网段都会被覆盖），
+ * 因此换网络/换热点后不用回来改配置。需要额外域名时用 DEV_ALLOWED_ORIGINS 环境变量补充
+ * （逗号分隔，支持 *.example.dev 这种子域通配）。
+ *
+ * 只影响开发模式，生产环境（Vercel）与本站安全策略无关。
+ */
+function localDevOrigins(): string[] {
+  const fromEnv = (process.env.DEV_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const fromInterfaces = Object.values(os.networkInterfaces())
+    .flat()
+    .filter(
+      (item): item is NonNullable<typeof item> =>
+        Boolean(item) && item!.family === "IPv4" && !item!.internal,
+    )
+    .map((item) => item.address);
+
+  return Array.from(new Set(["localhost", "127.0.0.1", ...fromInterfaces, ...fromEnv]));
+}
+
 const nextConfig: NextConfig = {
+  allowedDevOrigins: localDevOrigins(),
   // 本站数据全部是「即时/按会话」的（5 分钟 signed URL、按匿名会话裁剪的相册），
   // 因此关闭组件级缓存，避免把带签名的图片地址缓存复用。
   cacheComponents: false,

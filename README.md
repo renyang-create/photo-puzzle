@@ -90,6 +90,32 @@ pnpm test:e2e       # Playwright（需 pnpm exec playwright install chromium）
 
 > 没配 Supabase 时首页不会崩：会显示一张「还没接上 Supabase」的配置提示卡片。
 
+### 1.1 用手机访问本机服务（开发调试）
+
+Next.js 从 15.3 起会在 dev 下拦截**非 localhost 来源**对前端资源（`/_next/*`）的请求。
+症状很有辨识度：手机用 `http://192.168.x.x:3000` 打开页面**能拿到 HTML，但所有 JS 都是 403**，
+页面会永久停在服务端渲染出来的加载文案上（例如后台页面的「正在校验管理员身份…」），
+而同一台电脑用 `localhost` 打开却完全正常。
+
+本项目已在 `next.config.ts` 里配置 `allowedDevOrigins`：**自动把本机所有非回环 IPv4 地址**
+（局域网 IP、手机热点网段、Windows 移动热点）加进白名单，所以换网络后不用回来改配置。
+需要额外域名时用环境变量补充：
+
+```bash
+DEV_ALLOWED_ORIGINS="my-lan.dev,*.my-lan.dev"   # 逗号分隔，支持子域通配
+```
+
+找到本机 IP 并用手机访问后台：
+
+```powershell
+Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' } | Select-Object IPAddress, InterfaceAlias
+# 假设得到 192.168.1.5，则手机浏览器打开：
+#   http://192.168.1.5:3000/admin
+```
+
+注意两点：手机与电脑要在**同一个局域网**（校园网/公司网常开「设备隔离」，这时改用电脑开热点）；
+该配置**只影响开发模式**，生产环境（Vercel）不受影响。
+
 ---
 
 ## 2. 环境变量
