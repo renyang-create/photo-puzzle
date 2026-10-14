@@ -341,7 +341,12 @@ pnpm dev
 * 免费档需要留意两个量：**构建分钟数**与**函数调用次数**；本项目的图片流量走 Supabase
   signed URL，不消耗 Netlify 带宽，因此实际用量主要来自页面与 API 请求。
 * 函数有 10 秒执行上限：`/api/og` 拉中文字体时设了 4 秒超时并会在失败时降级为纯英文卡片，
-  cold start 不会顶到上限。
+  cold start 不会顶到上限（实测首次渲染 4.3s，随后走模块级字体缓存）。
+* ⚠️ **`/api/og` 显式设为 `Cache-Control: no-store`**：Netlify 的 Next.js 适配器会给该
+  路由的响应加 `Netlify-Vary: query=__nextDataReq|_rsc`，**只**把这几个内部查询参数算进
+  缓存键，业务参数 `photoId` 被忽略 —— 一旦允许缓存，不同照片的分享卡片会命中同一条
+  缓存条目、全部变成同一张图（动态 OG 失效）。排查依据：带随机 cache-buster 的请求
+  仍返回 `Cache-Status: "Netlify Durable"; hit` 且 `Age` 为正，说明复用了旧条目。
 
 部署步骤（控制台操作）：
 

@@ -94,11 +94,22 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        // 图片与 OG 图给一个较宽松的缓存策略，静态资源长缓存
+        /**
+         * ⚠️ /api/og 必须显式禁止 CDN 缓存，否则动态分享卡片会全部变成同一张图。
+         *
+         * 原因：Netlify 的 Next.js 适配器会给该路由的响应加上
+         *   Netlify-Vary: query=__nextDataReq|_rsc
+         * 也就是**只**把这两个内部查询参数算进缓存键，业务参数 photoId 被直接忽略。
+         * 于是 ?photoId=A 与 ?photoId=B 命中同一条缓存条目。
+         * 实测依据：带随机 cache-buster 的请求仍返回 Cache-Status: "Netlify Durable"; hit
+         * 且 Age 为正值（说明是旧条目而非新渲染）。
+         *
+         * 卡片内容本来就只由 photoId 决定，理论上适合长缓存；但缓存键不可控，
+         * 与其每次请求被错误复用，不如直接不缓存：中文字体已在模块作用域缓存，
+         * 热请求的渲染成本很低，而社交平台抓取卡片是低频动作。
+         */
         source: "/api/og",
-        headers: [
-          { key: "Cache-Control", value: "public, max-age=300, s-maxage=1800" },
-        ],
+        headers: [{ key: "Cache-Control", value: "no-store" }],
       },
     ];
   },
