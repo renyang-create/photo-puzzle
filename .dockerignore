@@ -1,0 +1,20 @@
+# 这些都不应该进镜像（尤其是 .env.local —— 它含密钥，绝不能被打进镜像层）
+node_modules
+.next
+.git
+.gitignore
+.vercel
+.env
+.env.local
+.env.*.local
+*.log
+npm-debug.log*
+test-results
+playwright-report
+blob-report
+coverage
+next-env.d.ts
+*.tsbuildinfo
+README.md
+ATTRIBUTIONS.md
+AGENTS.md
