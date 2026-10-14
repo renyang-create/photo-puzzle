@@ -19,8 +19,22 @@ export const serverEnv = {
   get supabaseUrl() {
     return publicEnv.supabaseUrl || required("NEXT_PUBLIC_SUPABASE_URL");
   },
+  /**
+   * 兼容 Supabase 的两套密钥命名：
+   *   旧：SUPABASE_SERVICE_ROLE_KEY（JWT，eyJ 开头）
+   *   新：SUPABASE_SECRET_KEY（sb_secret_ 开头）
+   * 两者都能绕过 RLS，因此都只能待在服务端（本文件被 `server-only` 保护）。
+   */
   get serviceRoleKey() {
-    return required("SUPABASE_SERVICE_ROLE_KEY");
+    const value =
+      process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+      process.env.SUPABASE_SECRET_KEY?.trim();
+    if (!value) {
+      throw new Error(
+        "缺少服务端环境变量 SUPABASE_SERVICE_ROLE_KEY（或新版 SUPABASE_SECRET_KEY），参考 .env.example",
+      );
+    }
+    return value;
   },
   get bucket() {
     return process.env.SUPABASE_PHOTOS_BUCKET?.trim() || "photos";

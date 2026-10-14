@@ -107,6 +107,12 @@ pnpm test:e2e       # Playwright（需 pnpm exec playwright install chromium）
 | `OG_FONT_URL` | 可选：OG 卡片用的中文字体（TTF/OTF/WOFF，**不支持 woff2**） | 仅服务端 |
 | `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX` | 进程内限流参数，默认 60s / 60 次 | 仅服务端 |
 
+> **关于密钥名称**：Supabase 正在把 `anon` / `service_role`（JWT，`eyJ` 开头）换成
+> `publishable`（`sb_publishable_`）/ `secret`（`sb_secret_`）两套并存的新密钥，入口统一在
+> **Settings → API Keys**（已没有单独的 Settings → API 页面）。本项目两套名字都认：
+> 公开侧可填 `NEXT_PUBLIC_SUPABASE_ANON_KEY` 或 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`；
+> 服务端侧可填 `SUPABASE_SERVICE_ROLE_KEY` 或 `SUPABASE_SECRET_KEY`。
+
 `src/lib/env.server.ts` 顶部有 `import "server-only"`：一旦它被客户端组件引用，**构建会直接失败**，从机制上防止 service role key 泄漏。
 生成密钥：
 
