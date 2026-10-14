@@ -8,6 +8,9 @@
 --   因此本文件只包含 CREATE POLICY 语句，
 --   这样 `supabase db push` 才能干净应用。
 --
+-- 补充：storage.objects 的表级权限由 Supabase 预置给 anon / authenticated，
+--       本文件只需要处理行级策略，不需要额外 GRANT。
+--
 -- 语义：
 --   * anon：没有任何 policy → 既不能 list，也不能 download。
 --     拼图/相册墙的图片一律走服务端 createSignedUrl（5 分钟）签发的短期链接。

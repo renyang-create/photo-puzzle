@@ -191,3 +191,41 @@ on conflict (id) do update
   set public = false,
       file_size_limit = excluded.file_size_limit,
       allowed_mime_types = excluded.allowed_mime_types;
+
+-- ------------------------------------------------------------
+-- 8. 显式授权（表级权限，不是行级）
+--
+-- 为什么必须有这一节：
+--   RLS 管的是「行级」可见性，而 API 角色（anon / authenticated / service_role）
+--   还需要「表级」权限才能让 PostgREST 正常工作。
+--   新建的表不会自动获得这些表权限，缺了它所有请求都会返回：
+--     42501  permission denied for table photos
+--   两者缺一不可：表级权限决定「能不能碰这张表」，RLS 决定「能碰哪些行」。
+-- ------------------------------------------------------------
+grant usage on schema public to anon, authenticated, service_role;
+
+-- photos：anon 只读（再由 RLS 收窄到 is_active = true）；写入只给 authenticated（再由 is_admin() 收窄）
+grant select on public.photos to anon;
+grant select, insert, update, delete on public.photos to authenticated;
+grant all on public.photos to service_role;
+
+-- unlocks：anon 完全不给；authenticated 只读（RLS + is_admin()）；写入只走服务端
+grant select on public.unlocks to authenticated;
+grant all on public.unlocks to service_role;
+
+-- admin_users：连 authenticated 都不给表权限，判定只经由 security definer 的 is_admin()
+grant all on public.admin_users to service_role;
+
+-- admin_credentials：只有服务端能看
+grant all on public.admin_credentials to service_role;
+
+-- admin_audit_log：管理员可读（RLS + is_admin()），写入走服务端
+grant select on public.admin_audit_log to authenticated;
+grant all on public.admin_audit_log to service_role;
+grant usage, select on sequence public.admin_audit_log_id_seq to authenticated, service_role;
+
+-- is_admin()：只授给 authenticated（anon 调用会得到 42501，这是预期行为）
+grant execute on function public.is_admin() to authenticated;
+
+-- 让 PostgREST 立刻刷新 schema 缓存，避免刚授权完还读到旧的权限快照
+notify pgrst, 'reload schema';
