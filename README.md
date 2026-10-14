@@ -254,6 +254,34 @@ supabase/migrations/
 `vercel.json` 里固定了 region 并给 `/api/*` 加了 `X-Robots-Tag: noindex`。
 一般**不需要额外 rewrite**：App Router 的路由就是最终路径；只有当你把游戏挂到子路径（例如 `https://me.com/puzzle`）时才需要配 rewrite，同时把 `NEXT_PUBLIC_SITE_URL` 改成子路径前缀。
 
+### 8.1 本项目的仓库地址（私有）
+
+| 项目 | 值 |
+| --- | --- |
+| 网页地址 | https://github.com/renyang-create/photo-puzzle |
+| SSH 推送地址 | `git@github.com:renyang-create/photo-puzzle.git` |
+| 默认分支 | `main`（已设置上游跟踪 `origin/main`） |
+
+```bash
+git remote -v      # origin  git@github.com:renyang-create/photo-puzzle.git (fetch/push)
+git push           # 已跟踪上游，直接推即可
+```
+
+在新机器上克隆：
+
+```bash
+git clone git@github.com:renyang-create/photo-puzzle.git
+cd photo-puzzle
+pnpm install
+cp .env.example .env.local   # Windows: copy .env.example .env.local
+supabase link --project-ref <your-project-ref>
+supabase db push
+pnpm dev
+```
+
+> 该仓库是 **Private**：照片与 `SUPABASE_SERVICE_ROLE_KEY` 都不会进仓库（`.env*` 已被 `.gitignore` 排除，只提交 `.env.example`）。
+> Vercel 侧用 GitHub 集成导入该仓库即可自动部署。
+
 ---
 
 ## 9. 验收清单
