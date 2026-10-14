@@ -314,6 +314,34 @@ pnpm dev
 > 该仓库是 **Private**：照片与 `SUPABASE_SERVICE_ROLE_KEY` 都不会进仓库（`.env*` 已被 `.gitignore` 排除，只提交 `.env.example`）。
 > Vercel 侧用 GitHub 集成导入该仓库即可自动部署。
 
+### 8.2 备选：Netlify（**永久免费档**，无需手机号验证）
+
+如果不想为 Vercel 的账号手机验证折腾，Netlify 的免费档可以完整跑起这个项目：
+
+* **适配器自动安装**：Netlify 检测到 Next.js 后会使用 OpenNext 官方的 Next.js 适配器
+  （`@netlify/plugin-nextjs`，v5 起支持 Next.js 16），把 SSR / API 路由 / Server Actions
+  打包成 **Node 运行时的 Netlify Functions**，因此服务端的 `sharp` 可以正常工作。
+  官方建议**不要**手动固定适配器版本，让平台自动跟进安全修复。
+* `netlify.toml` 已固定 `NODE_VERSION = "22"`（`@supabase/supabase-js` 2.x 要求 Node ≥ 22）
+  与 `publish = ".next"`。
+* 环境变量仍在**控制台**配置（`Site configuration → Environment variables`），
+  且必须在**首次部署前**配好 —— Next 会在构建期把 `NEXT_PUBLIC_*` 内联进前端产物。
+* 免费档需要留意两个量：**构建分钟数**与**函数调用次数**；本项目的图片流量走 Supabase
+  signed URL，不消耗 Netlify 带宽，因此实际用量主要来自页面与 API 请求。
+* 函数有 10 秒执行上限：`/api/og` 拉中文字体时设了 4 秒超时并会在失败时降级为纯英文卡片，
+  cold start 不会顶到上限。
+
+部署步骤（控制台操作）：
+
+```
+1. netlify.com → Add new site → Import an existing project → GitHub → 授权 → 选 photo-puzzle
+2. Build command: pnpm build        （一般自动识别）
+   Publish directory: .next         （一般自动识别）
+3. Site configuration → Environment variables：填入与 .env.local 相同的键值
+4. Deploy site → 拿到 https://<name>.netlify.app
+5. 把 NEXT_PUBLIC_SITE_URL 改成该地址后重新部署一次（NEXT_PUBLIC_* 是构建期内联的）
+```
+
 ---
 
 ## 9. 声音（背景音乐与音效）

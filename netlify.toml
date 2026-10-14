@@ -1,0 +1,32 @@
+# Netlify 部署配置（免费套餐即可）
+#
+# 说明：
+#   * Next.js 的适配由 Netlify 官方的 OpenNext 适配器自动完成（默认自动安装），
+#     它会把 SSR / API 路由 / Server Actions 打包成 Netlify Functions（Node 运行时，
+#     因此服务端的 sharp 可以正常使用）。
+#   * publish 必须指向 .next（这是适配器约定的目录，不是 out）。
+#   * NODE_VERSION 显式固定为 22：@supabase/supabase-js 2.x 要求 Node >= 22，
+#     sharp 0.35 要求 >= 20.9，避免构建镜像默认到低版本。
+#   * pnpm 由 Netlify 依据 pnpm-lock.yaml 自动识别并提供（无需额外配置）。
+#
+# ⚠️ 不要把环境变量写进这个文件 —— 请在 Netlify 控制台
+#    Site configuration → Environment variables 里配置。
+
+[build]
+  command = "pnpm build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # 构建期就需要 NEXT_PUBLIC_* （Next 会把它们内联进前端产物），
+  # 所以环境变量必须在首次部署前就配置好。
+
+[[headers]]
+  for = "/audio/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/fonts/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
