@@ -1,0 +1,48 @@
+# 免费「保活」定时任务
+#
+# 为什么需要：Supabase 免费项目**连续 7 天没有任何访问会被自动暂停**，
+# 暂停后朋友第一次点开链接要等它唤醒（几秒到几十秒）。Netlify 侧不会休眠，
+# 但函数冷启动也需要热身。这个工作流每 3 天访问一次线上站点与数据接口，
+# 重置 Supabase 的「不活跃」计时。
+#
+# 说明：
+#   * 只发**只读**请求（首页 HTML + 相册元数据接口 + 一次 OG 卡片渲染），不写任何数据。
+#   * 站点地址若变更（换域名 / 换 Netlify 项目名），请同步修改下面的 BASE。
+#   * ⚠️ GitHub 会在仓库连续 60 天无活动后自动停用定时工作流（届时在 Actions 页点一次
+#     「Enable workflow」即可）。想更稳可以再加一个免费的 UptimeRobot 监测（5 分钟一次）。
+#   * 也支持手动触发：Actions → keep-alive → Run workflow。
+name: keep-alive
+
+on:
+  schedule:
+    # UTC 03:17，每 3 天一次。故意避开整点：GitHub 的定时任务在整点容易排队延迟。
+    - cron: "17 3 */3 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping homepage, data API and OG card
+        run: |
+          set -euo pipefail
+          BASE="https://tangerine-yeot-4635a8.netlify.app"
+
+          code_home=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$BASE/")
+          echo "homepage  -> $code_home"
+
+          # 这个接口会真的查一次 Postgres，用来重置 Supabase 的暂停计时
+          code_api=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$BASE/api/gallery")
+          echo "gallery   -> $code_api"
+
+          # 顺带把 OG 卡片函数暖一遍（固定模板，只传 photoId）
+          code_og=$(curl -s -o /dev/null -w '%{http_code}' --max-time 45 "$BASE/api/og?photoId=00000000-0000-4000-8000-000000000000")
+          echo "og-card   -> $code_og"
+
+          # 首页与数据接口必须正常；失败就让工作流报红，方便在 Actions 里看到
+          test "$code_home" = "200"
+          test "$code_api" = "200"
