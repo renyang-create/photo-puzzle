@@ -11,7 +11,6 @@ import {
   pieceBackgroundPosition,
   pieceBackgroundSize,
   pieceCount,
-  pieceSizePercent,
   slotToGrid,
   swapSlots,
   type Difficulty,
@@ -36,6 +35,11 @@ import {
  * 打乱用 Fisher-Yates（见 lib/puzzle.ts），并保证初始不是已完成状态。
  *
  * 重开一局由父组件通过 `key` 触发重挂载，因此组件内部不需要「在 effect 里重置状态」。
+ *
+ * 外观：复刻 2008 老 Flash 拼图 —— 直角碎片、2px 黑色缝隙、#000 底板；
+ * 全局玻璃反光只做一层独立 overlay（不是碎片自带高光）。
+ * 层叠顺序严格为：普通碎片(1) < 玻璃高光层(500) < 拿起中的碎片(999)，
+ * 因此「拿起」的碎片会自动越过高光层，既不用改碎片样式，也不用挪动 DOM 节点。
  */
 
 export interface PuzzleBoardProps {
@@ -61,6 +65,13 @@ interface PointerState {
 
 const SHUFFLE_DURATION_MS = 900;
 const DRAG_THRESHOLD_PX = 8;
+/**
+ * 2008 老 Flash 拼图的「黑色缝隙」。
+ * 做法：每块比所在格子小 PIECE_GAP_PX、并整体偏移 PIECE_GAP_PX / 2，
+ * 相邻碎片之间就会露出底层纯黑底板 —— 缝隙由底色透出，而不是给碎片描边。
+ * 需求给出的上限是 3px，不允许更大。
+ */
+const PIECE_GAP_PX = 2;
 
 export function PuzzleBoard({
   imageUrl,
@@ -192,7 +203,6 @@ export function PuzzleBoard({
   // 正方形边长：既要放得下（94vw / 可视高度），也要保证单块 >= 44px
   const sizeExpression = `max(min(94vw, calc(100dvh - 280px), 520px), min(${difficulty * MIN_TOUCH_TARGET_PX}px, 98vw))`;
   const cellSize = boardSize > 0 ? boardSize / difficulty : 0;
-  const piecePercent = pieceSizePercent(difficulty);
 
   return (
     <div className="flex w-full flex-col items-center gap-3">
@@ -201,9 +211,14 @@ export function PuzzleBoard({
         className="relative"
         style={{ width: sizeExpression, aspectRatio: "1 / 1" }}
       >
+        {/*
+          2008 老 Flash 拼图外观：纯黑底板 + 直角 + 无描边 + 无外发光。
+          这里**故意不加 overflow-hidden**：拖拽中的碎片会被拖到棋盘之外，
+          一旦在棋盘上裁剪，碎片就会被切掉；高光渐变由下面那层 overlay 自己裁剪。
+        */}
         <div
           ref={boardRef}
-          className="relative size-full overflow-hidden rounded-2xl border border-white/10 bg-black/40 shadow-[0_0_60px_-20px_rgba(167,139,250,0.55)]"
+          className="relative size-full rounded-none bg-black"
           style={{ touchAction: "none" }}
           data-testid="puzzle-board"
           data-difficulty={difficulty}
@@ -224,11 +239,16 @@ export function PuzzleBoard({
           {boardSize > 0 &&
             order.map((pieceId, slot) => {
               const { row, col } = slotToGrid(slot, difficulty);
-              const baseX = col * cellSize;
-              const baseY = row * cellSize;
               const isSelected = selected === slot;
               const isDragging = drag?.slot === slot;
+              // 「拿起」= 点选态或拖拽态：老 Flash 里只有这一种状态才有放大与投影
+              const lifted = isSelected || isDragging;
               const solved = phase === "solved";
+              // 缝隙居中：每块向内收 PIECE_GAP_PX / 2，上下左右对称
+              const halfGap = PIECE_GAP_PX / 2;
+              const baseX = col * cellSize + halfGap;
+              const baseY = row * cellSize + halfGap;
+              const pieceSize = Math.max(1, cellSize - PIECE_GAP_PX);
 
               return (
                 <motion.button
@@ -240,10 +260,11 @@ export function PuzzleBoard({
                   aria-label={`第 ${slot + 1} 格，图块 ${pieceId + 1}`}
                   aria-pressed={isSelected}
                   disabled={!interactive}
-                  className="absolute top-0 left-0 border border-white/5 will-change-transform select-none"
+                  className="absolute top-0 left-0 rounded-none border-0 will-change-transform select-none"
                   style={{
-                    width: cellSize,
-                    height: cellSize,
+                    // 缝隙做法：碎片比格子小 PIECE_GAP_PX，露出底层 #000 形成黑色缝隙
+                    width: pieceSize,
+                    height: pieceSize,
                     backgroundImage: `url(${imageUrl})`,
                     backgroundSize: pieceBackgroundSize(difficulty),
                     backgroundPosition: pieceBackgroundPosition(pieceId, difficulty),
@@ -262,15 +283,17 @@ export function PuzzleBoard({
                   animate={{
                     x: isDragging && drag ? baseX + drag.dx : baseX,
                     y: isDragging && drag ? baseY + drag.dy : baseY,
-                    scale: solved ? [1, 1.04, 1] : isSelected ? 0.93 : 1,
+                    // 老 Flash 规矩：静止碎片不缩放、无阴影；只有「拿起」时才抬高 2%
+                    scale: solved ? [1, 1.04, 1] : lifted ? 1.02 : 1,
                     rotate: 0,
                     opacity: 1,
-                    boxShadow: isSelected
-                      ? "0 0 0 2px rgba(167,139,250,0.95), 0 0 24px rgba(167,139,250,0.55)"
+                    boxShadow: lifted
+                      ? "0px 4px 8px rgba(0,0,0,0.35)"
                       : solved
-                        ? "0 0 24px rgba(167,139,250,0.45)"
+                        ? "0 0 24px rgba(255,236,196,0.45)"
                         : "0 0 0 0 rgba(0,0,0,0)",
-                    zIndex: isDragging ? 30 : isSelected ? 20 : 1,
+                    // 层叠顺序：普通碎片(1) < 玻璃高光层(500) < 拿起中的碎片(999)
+                    zIndex: lifted ? 999 : 1,
                   }}
                   transition={{
                     type: "spring",
@@ -327,16 +350,22 @@ export function PuzzleBoard({
               );
             })}
 
-          {/* 槽位参考线：几乎不可见，但能帮玩家判断格子边界 */}
+          {/*
+            全局玻璃反光：独立 overlay 层（不是碎片自带高光），pointer-events: none 绝不遮挡交互。
+            由这层容器自己 overflow-hidden 裁剪渐变 —— 高光不溢出棋盘，也不会切到拖拽中的碎片。
+          */}
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-0"
-            style={{
-              backgroundImage:
-                "linear-gradient(to right, rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.06) 1px, transparent 1px)",
-              backgroundSize: `${piecePercent}% ${piecePercent}%`,
-            }}
-          />
+            className="pointer-events-none absolute inset-0 z-[500] overflow-hidden"
+          >
+            <div
+              className="absolute inset-0"
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 35%)",
+              }}
+            />
+          </div>
         </div>
       </div>
 
