@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>经典 Flash 拼图 UI 复刻 · 单文件 Demo</title>
+<style>
+  /* ============================================================================
+     0. 页面外壳（2008 年老站风格）
+     ----------------------------------------------------------------------------
+     注意：下面这些「老站装饰」（直角、细描边、立体按钮）**只作用于页面 chrome**。
+           碎片本体严格保持：直角、无描边、无阴影、无渐变、无缩放。
+     ============================================================================ */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #d7dbe1;
+    background-image: linear-gradient(#f2f4f7, #d7dbe1 42%, #c9ced5);
+    color: #1b2430;
+    font: 12px/1.55 Tahoma, "Microsoft YaHei", SimSun, sans-serif;
+    padding: 10px;
+    -webkit-text-size-adjust: 100%;
+  }
+  .page { max-width: 760px; margin: 0 auto; }
+
+  /* 顶部工具条：经典凸起面板 */
+  .bar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 6px 8px;
+    background: #eff1f4;
+    border: 1px solid #9aa3ad;
+    box-shadow: inset 0 1px 0 #fff;
+  }
+  .brand { font-weight: 700; color: #17457f; letter-spacing: .5px; }
+  .brand small { font-weight: 400; color: #6b7480; margin-left: 6px; letter-spacing: 0; }
+  .tools { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+  /* 经典 2008 立体按钮 */
+  button, select {
+    font: inherit;
+    color: #1b2430;
+    background: linear-gradient(#fdfdfe, #dfe3e9);
+    border: 1px solid #8e97a2;
+    border-radius: 0;                 /* 老站一律直角 */
+    padding: 4px 10px;
+    cursor: pointer;
+  }
+  button:active { background: linear-gradient(#cdd3da, #e7eaee); }
+  button[aria-pressed="true"] { background: linear-gradient(#cfe3ff, #9dc4f5); border-color: #5b86bf; }
+  select { padding: 3px 6px; }
+
+  /* 状态读数 */
+  .readout {
+    margin: 8px 0 6px;
+    padding: 5px 8px;
+    background: #fff;
+    border: 1px solid #b3bac3;
+    color: #3c4653;
+    font-size: 11px;
+  }
+  .readout b { color: #17457f; }
+
+  /* ============================================================================
+     1. 舞台 + 缩放层
+     ----------------------------------------------------------------------------
+     · 响应式**只**通过 .scaler 的 transform: scale() 等比缩放整个 board；
+       board 内部碎片尺寸 100px、gap 2px 永远不变。
+     · transform-origin: 0 0 —— 缩放锚点在左上角，配合坐标反向补偿。
+     ============================================================================ */
+  .stage {
+    position: relative;
+    /* 舞台高度由 JS 按「缩放后的实际高度」设置，避免缩放后留下大片空白 */
+  }
+  .scaler {
+    position: relative;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+
+  /* ============================================================================
+     2. 拼图容器（棋盘）
+     ----------------------------------------------------------------------------
+     · 底色 #000：碎片之间的 2px gap 透出黑色，形成「黑色缝隙」。
+     · 这里**故意不写 overflow: hidden**：因为拖拽碎片是 board 的子节点，
+       一旦在 board 上裁剪，碎片拖出边界就会被切掉。
+       需求里「容器 overflow: hidden 裁剪多余高光」的意图，由高光层自己的
+       裁剪容器 .glass-clip 承担（见第 4 节），效果完全一致且不切碎片。
+     ============================================================================ */
+  .board {
+    position: relative;               /* 让 .dragging 的 absolute 以 board 为基准 */
+    z-index: auto;                    /* 关键：不能是数值，否则会成为层叠上下文，压不住高光层 */
+    display: grid;
+    gap: 2px;                         /* 缝隙 2px（需求允许最大 3px） */
+    background: #000;                 /* 纯黑底：缝隙靠它透出 */
+    /* 禁止整块拖选文字，避免桌面端拖拽时选中文本 */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: none;               /* 只在拼图区域内禁用默认手势，不影响页面其它地方滚动 */
+  }
+
+  /* ============================================================================
+     3. 碎片
+     ----------------------------------------------------------------------------
+     【静止状态】直角、无 border / outline / box-shadow、无渐变、无缩放。
+     【拖拽状态】见 .piece.dragging（scale 1.02 + 指定阴影 + z-index 999）。
+     ============================================================================ */
+  .piece {
+    width: 100px;
+    height: 100px;
+    border: 0;
+    outline: 0;
+    border-radius: 0;                 /* 完全直角，禁止圆角 */
+    box-shadow: none;                 /* 静止碎片平贴画布，无悬浮感 */
+    background-color: #0a0a0a;
+    background-repeat: no-repeat;     /* 图片由 100px 方格切片铺满，不重复 */
+    background-size: 100% 100%;       /* 会被 JS 覆盖为「整张图的像素尺寸」 */
+    position: relative;
+    z-index: 1;                       /* 层叠顺序：普通碎片(1) < 高光层(500) < 拖拽碎片(999) */
+    touch-action: none;               /* 手指在碎片上拖动时不由浏览器接管滚动 */
+    -webkit-user-drag: none;
+  }
+
+  /* 拖拽中的碎片：脱离原位、抬高、放大 2% */
+  .piece.dragging {
+    position: absolute;               /* 需求明确：用 absolute，禁止 fixed */
+    z-index: 999;                     /* 高于高光层 → 自动脱离玻璃反光 */
+    cursor: grabbing;
+    transform: scale(1.02);
+    transform-origin: 0 0;            /* 从左上角放大，避免定位偏移 */
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.35);   /* 仅拖拽时才有投影 */
+    border-radius: 0;                 /* 依旧直角 */
+    border: 0;
+  }
+  /* 松手归位时的小过渡（只影响 left/top，不改布局、不改 gap） */
+  .piece.returning { transition: left .16s ease-out, top .16s ease-out; }
+
+  /* ============================================================================
+     4. 玻璃高光层
+     ----------------------------------------------------------------------------
+     · 独立 overlay，不是碎片自带反光；渐变只出现在这一层。
+     · pointer-events: none —— 绝不遮挡交互。
+     · .glass-clip 负责 overflow: hidden 裁剪（需求里「容器裁剪」的落点）。
+     ============================================================================ */
+  .glass-clip {
+    position: absolute;
+    left: 0; top: 0;
+    overflow: hidden;                 /* 裁掉多余渐变，高光不溢出 board 区域 */
+    pointer-events: none;
+    z-index: 500;                     /* 普通碎片(1) < 本层(500) < 拖拽碎片(999) */
+  }
+  .glass {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 35%);
+  }
+
+  /* 网格占位：拖拽时留在原位，保持 grid 布局不位移 */
+  .slot {
+    width: 100px;
+    height: 100px;
+    background: transparent;          /* 完全透明、不可见 */
+    border: 0;
+    box-shadow: none;
+    pointer-events: none;
+  }
+
+  /* 说明区 */
+  .tip { margin: 10px 0 0; padding: 6px 8px; background: #fffbe8; border: 1px solid #e2d49a; color: #6a5b28; font-size: 11px; }
+  .tip b { color: #8a6d1a; }
+  .todo { margin-top: 10px; padding: 6px 8px; background: #eef3fb; border: 1px solid #b9c9e2; color: #2f4a72; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="bar">
+    <span class="brand">经典拼图 · 怀旧版<small>单文件 UI Demo</small></span>
+    <div class="tools">
+      <button id="btnShuffle" type="button">打乱</button>
+      <button id="btnGlass" type="button" aria-pressed="true">玻璃高光：开</button>
+      <label>难度
+        <select id="selSize">
+          <option value="3" selected>3 × 3</option>
+          <option value="4">4 × 4</option>
+          <option value="5">5 × 5</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div class="readout" id="readout">准备中…</div>
+
+  <div class="stage" id="stage">
+    <div class="scaler" id="scaler">
+      <div class="board" id="board"></div>
+      <div class="glass-clip" id="glassClip"><div class="glass" id="glass"></div></div>
+    </div>
+  </div>
+
+  <p class="tip">
+    <b>试试拖拽：</b>电脑端按住任意碎片拖动，手机端用手指按住拖动。拖起时碎片会抬高（2% 放大 + 投影）并脱离玻璃反光，原位保留透明占位格，松手自动归位。<br />
+    静止碎片：直角、无描边、无阴影、无渐变（反光只来自最外层那层全局高光）。
+  </p>
+  <div class="todo">
+    <b>锯齿 TODO：</b>单元格 100px，锯齿凹凸深度固定 12px。纯 HTML + CSS 无法批量生成每块随机凹凸的拼图轮廓，
+    因此本 Demo 先用正方形碎片占位；下一步迁移 Canvas API：用 Path2D 生成含 tab / blank 的边缘（深 12px），
+    再用 <code>ctx.clip()</code>（等价于 clipPath）绘制碎片。
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ==========================================================================
+     常量
+     ========================================================================== */
+  var CELL = 100;            // 碎片格子 100 × 100
+  var GAP = 2;               // 网格缝隙 2px（需求允许最大 3px）
+  var TEETH = 12;            // TODO(锯齿)：凹凸深度固定 12px，交给 Canvas clipPath 实现
+  var MIN_SCALE = 44 / CELL; // 触控区下限 44px → 缩放不得小于 0.44
+
+  var board = document.getElementById("board");
+  var scaler = document.getElementById("scaler");
+  var stage = document.getElementById("stage");
+  var glassClip = document.getElementById("glassClip");
+  var glass = document.getElementById("glass");
+  var readout = document.getElementById("readout");
+  var btnShuffle = document.getElementById("btnShuffle");
+  var btnGlass = document.getElementById("btnGlass");
+  var selSize = document.getElementById("selSize");
+
+  var size = 3;
+  var scale = 1;             // 当前外层缩放系数（拖拽坐标要用它做反向补偿）
+  var photoUrl = "";
+  var drag = null;
+
+  function boardPx() { return size * CELL + (size - 1) * GAP; }
+
+  /* ==========================================================================
+     1. 生成一张「照片」（纯本地 canvas 绘制，单文件无需外部图片）
+        真实项目里这里换成用户的照片，碎片仍然用 background-image + position 切片。
+     ========================================================================== */
+  function buildPhoto() {
+    var N = size * CELL;
+    var c = document.createElement("canvas");
+    c.width = N;
+    c.height = N;
+    var g = c.getContext("2d");
+
+    // 天空
+    var sky = g.createLinearGradient(0, 0, 0, N * 0.62);
+    sky.addColorStop(0, "#1b2a5e");
+    sky.addColorStop(0.45, "#7a4a8f");
+    sky.addColorStop(1, "#f0a35e");
+    g.fillStyle = sky;
+    g.fillRect(0, 0, N, N * 0.62);
+
+    // 夕阳
+    var sunX = N * 0.63, sunY = N * 0.47, r = N * 0.1;
+    var glow = g.createRadialGradient(sunX, sunY, r * 0.2, sunX, sunY, r * 2.4);
+    glow.addColorStop(0, "rgba(255,238,180,0.95)");
+    glow.addColorStop(0.35, "rgba(255,178,92,0.5)");
+    glow.addColorStop(1, "rgba(255,160,60,0)");
+    g.fillStyle = glow;
+    g.beginPath();
+    g.arc(sunX, sunY, r * 2.4, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#fff3c8";
+    g.beginPath();
+    g.arc(sunX, sunY, r * 0.55, 0, Math.PI * 2);
+    g.fill();
+
+    // 远山
+    var peaks = [[0.08, 0.44], [0.22, 0.56], [0.36, 0.38], [0.54, 0.57], [0.7, 0.42], [0.86, 0.55], [1, 0.49]];
+    g.fillStyle = "rgba(38,28,68,0.88)";
+    g.beginPath();
+    g.moveTo(0, N * 0.62);
+    for (var i = 0; i < peaks.length; i++) g.lineTo(N * peaks[i][0], N * peaks[i][1]);
+    g.lineTo(N, N * 0.62);
+    g.closePath();
+    g.fill();
+
+    // 水面
+    var water = g.createLinearGradient(0, N * 0.62, 0, N);
+    water.addColorStop(0, "#2a2350");
+    water.addColorStop(1, "#0a0920");
+    g.fillStyle = water;
+    g.fillRect(0, N * 0.62, N, N * 0.38);
+
+    // 波光倒影
+    g.globalAlpha = 0.26;
+    g.fillStyle = "#ffd79a";
+    for (var k = 0; k < 18; k++) {
+      var y = N * 0.63 + k * (N * 0.35 / 18);
+      var w = N * (0.05 + ((k * 37) % 17) / 100);
+      g.fillRect(sunX - w / 2, y, w, 2);
+    }
+    g.globalAlpha = 1;
+
+    // 前景剪影
+    g.fillStyle = "#07060f";
+    g.beginPath();
+    g.moveTo(0, N);
+    g.lineTo(0, N * 0.86);
+    g.quadraticCurveTo(N * 0.2, N * 0.78, N * 0.34, N * 0.93);
+    g.quadraticCurveTo(N * 0.5, N * 1.03, N * 0.66, N * 0.9);
+    g.quadraticCurveTo(N * 0.84, N * 0.8, N, N * 0.88);
+    g.lineTo(N, N);
+    g.closePath();
+    g.fill();
+
+    // 飞鸟
+    g.strokeStyle = "rgba(18,16,38,0.85)";
+    g.lineWidth = 2;
+    var birds = [[0.3, 0.2, 1], [0.4, 0.15, 0.8], [0.48, 0.26, 0.7]];
+    for (var b = 0; b < birds.length; b++) {
+      var bx = N * birds[b][0], by = N * birds[b][1], s = birds[b][2];
+      g.beginPath();
+      g.moveTo(bx - N * 0.03 * s, by);
+      g.quadraticCurveTo(bx, by - N * 0.03 * s, bx + N * 0.03 * s, by);
+      g.stroke();
+    }
+
+    return c.toDataURL("image/png");
+  }
+
+  /* Fisher-Yates（与项目里既有打乱算法一致，可注入随机源） */
+  function shuffled(list) {
+    for (var i = list.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = list[i];
+      list[i] = list[j];
+      list[j] = t;
+    }
+    return list;
+  }
+
+  /* ==========================================================================
+     2. 构建棋盘
+     ========================================================================== */
+  function buildBoard() {
+    var N = size * CELL;
+    photoUrl = buildPhoto();
+
+    board.innerHTML = "";
+    board.style.gridTemplateColumns = "repeat(" + size + ", " + CELL + "px)";
+    board.style.width = boardPx() + "px";
+    board.style.height = boardPx() + "px";
+
+    glassClip.style.width = boardPx() + "px";
+    glassClip.style.height = boardPx() + "px";
+
+    var order = [];
+    for (var i = 0; i < size * size; i++) order.push(i);
+    shuffled(order);
+
+    for (var n = 0; n < order.length; n++) {
+      var slot = order[n];
+      var row = Math.floor(slot / size);
+      var col = slot % size;
+
+      var el = document.createElement("div");
+      el.className = "piece";
+      el.dataset.slot = String(slot);
+      // 与线上游戏一致：background-image + background-position 做方格切片（不裁剪、不变形）
+      el.style.backgroundImage = "url(" + photoUrl + ")";
+      el.style.backgroundSize = N + "px " + N + "px";
+      el.style.backgroundPosition = (-col * CELL) + "px " + (-row * CELL) + "px";
+      board.appendChild(el);
+    }
+
+    layout();
+  }
+
+  /* ==========================================================================
+     3. 响应式：只缩放外层 .scaler，内部 grid / 碎片尺寸 / gap 一律不动
+     ========================================================================== */
+  function layout() {
+    var bw = boardPx();
+    var avail = stage.clientWidth;
+    var s = avail > 0 ? avail / bw : 1;
+    if (s > 1) s = 1;
+    if (s < MIN_SCALE) s = MIN_SCALE;     // 保证实际触控区 >= 44px
+    scale = s;
+
+    scaler.style.width = bw + "px";
+    scaler.style.height = bw + "px";
+    scaler.style.transform = "scale(" + scale + ")";
+    scaler.style.marginLeft = Math.max(0, Math.round((avail - bw * scale) / 2)) + "px";
+    stage.style.height = Math.round(bw * scale) + "px";
+
+    readout.innerHTML =
+      "单元格 <b>100 × 100</b> · 缝隙 <b>2px</b> · 底色 <b>#000</b> · 网格 <b>" + size + "×" + size + "</b>" +
+      " · 外层缩放 <b>scale(" + scale.toFixed(3) + ")</b>" +
+      " · 实际触控区 <b>" + Math.round(CELL * scale) + "px</b>（要求 ≥ 44px）";
+  }
+
+  /* ==========================================================================
+     4. 拖拽（鼠标 + 触屏双端）
+     --------------------------------------------------------------------------
+     · absolute 定位（不用 fixed）
+     · transform-origin: 0 0，scale(1.02) 只作用于拖拽元素
+     · 坐标反向补偿：屏幕位移 ÷ scale = board 内部坐标
+     · touchmove 里**仅在拖拽激活时** preventDefault，不影响页面正常滚动
+     ========================================================================== */
+  function beginDrag(piece, pt) {
+    var pieceRect = piece.getBoundingClientRect();
+    var boardRect = board.getBoundingClientRect();
+
+    // 未缩放坐标系下的原位（缩放锚点在左上角，所以这样换算是对的）
+    var homeLeft = (pieceRect.left - boardRect.left) / scale;
+    var homeTop = (pieceRect.top - boardRect.top) / scale;
+
+    // 原位留一个 100×100 透明占位，保证 grid 布局不位移
+    var ph = document.createElement("div");
+    ph.className = "slot";
+    piece.parentNode.insertBefore(ph, piece);
+
+    piece.style.left = homeLeft + "px";
+    piece.style.top = homeTop + "px";
+    piece.classList.add("dragging");
+
+    drag = {
+      el: piece,
+      ph: ph,
+      homeLeft: homeLeft,
+      homeTop: homeTop,
+      grabDX: (pt.x - pieceRect.left) / scale,
+      grabDY: (pt.y - pieceRect.top) / scale
+    };
+  }
+
+  function moveDrag(pt) {
+    if (!drag) return;
+    var boardRect = board.getBoundingClientRect();
+
+    var left = (pt.x - boardRect.left) / scale - drag.grabDX;
+    var top = (pt.y - boardRect.top) / scale - drag.grabDY;
+
+    // 简单边界限制：碎片不超出视口
+    var minLeft = -boardRect.left / scale;
+    var maxLeft = (window.innerWidth - boardRect.left) / scale - CELL;
+    var minTop = -boardRect.top / scale;
+    var maxTop = (window.innerHeight - boardRect.top) / scale - CELL;
+
+    left = Math.min(Math.max(left, minLeft), Math.max(minLeft, maxLeft));
+    top = Math.min(Math.max(top, minTop), Math.max(minTop, maxTop));
+
+    drag.el.style.left = left + "px";
+    drag.el.style.top = top + "px";
+  }
+
+  function endDrag() {
+    if (!drag) return;
+    var el = drag.el;
+    var ph = drag.ph;
+    var homeLeft = drag.homeLeft;
+    var homeTop = drag.homeTop;
+    drag = null;                       // 先清空，允许立刻开始下一次拖拽
+
+    el.classList.add("returning");
+    el.style.left = homeLeft + "px";
+    el.style.top = homeTop + "px";
+
+    var done = false;
+    function restore() {
+      if (done) return;
+      // 若用户已重新抓起这块碎片，就不要复原样式
+      if (drag && drag.el === el) return;
+      done = true;
+      el.classList.remove("returning", "dragging");
+      el.style.left = "";
+      el.style.top = "";
+      if (ph.parentNode) ph.parentNode.removeChild(ph);
+    }
+    el.addEventListener("transitionend", restore, { once: true });
+    window.setTimeout(restore, 200);   // 兜底：transitionend 未触发时也能复原
+  }
+
+  function pointOf(e) {
+    if (e.touches && e.touches.length) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    if (e.changedTouches && e.changedTouches.length) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+    return { x: e.clientX, y: e.clientY };
+  }
+
+  /* --- 鼠标 --- */
+  board.addEventListener("mousedown", function (e) {
+    if (drag) return;
+    var piece = e.target.closest(".piece");
+    if (!piece) return;
+    e.preventDefault();                // 避免桌面端拖出文字选择 / 图片拖影
+    beginDrag(piece, pointOf(e));
+  });
+  window.addEventListener("mousemove", function (e) {
+    if (!drag) return;
+    moveDrag(pointOf(e));
+  });
+  window.addEventListener("mouseup", function () {
+    if (!drag) return;
+    endDrag();
+  });
+
+  /* --- 触屏 --- */
+  // touchstart 里**不** preventDefault：此刻还不能确定是「拖碎片」还是「滚页面」。
+  board.addEventListener("touchstart", function (e) {
+    if (drag) return;
+    var piece = e.target.closest(".piece");
+    if (!piece) return;
+    beginDrag(piece, pointOf(e));
+  }, { passive: true });
+
+  // 只有 drag 已经激活（确实在拖碎片）时才阻止默认行为，避免影响页面正常滚动 / 缩放
+  window.addEventListener("touchmove", function (e) {
+    if (!drag) return;
+    e.preventDefault();
+    moveDrag(pointOf(e));
+  }, { passive: false });
+
+  window.addEventListener("touchend", function () {
+    if (!drag) return;
+    endDrag();
+  });
+  window.addEventListener("touchcancel", function () {
+    if (!drag) return;
+    endDrag();
+  });
+
+  /* ==========================================================================
+     5. 工具条
+     ========================================================================== */
+  btnShuffle.addEventListener("click", function () {
+    // 仅打乱「哪块碎片显示原图的哪一格」，纯视觉演示，不涉及拼图判定逻辑
+    var pieces = Array.prototype.slice.call(board.querySelectorAll(".piece"));
+    var order = shuffled(pieces.map(function (p, i) { return i; }));
+    for (var i = 0; i < pieces.length; i++) board.appendChild(pieces[order[i]]);
+  });
+
+  btnGlass.addEventListener("click", function () {
+    var on = btnGlass.getAttribute("aria-pressed") === "true";
+    var next = !on;
+    btnGlass.setAttribute("aria-pressed", next ? "true" : "false");
+    btnGlass.textContent = "玻璃高光：" + (next ? "开" : "关");
+    glass.style.display = next ? "block" : "none";
+  });
+
+  selSize.addEventListener("change", function () {
+    size = parseInt(selSize.value, 10) || 3;
+    buildBoard();
+  });
+
+  var raf = 0;
+  function onResize() {
+    if (raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(function () {
+      raf = 0;
+      layout();
+    });
+  }
+  window.addEventListener("resize", onResize);
+  window.addEventListener("orientationchange", onResize);
+
+  /* ==========================================================================
+     启动
+     ========================================================================== */
+  buildBoard();
+
+  // TODO(锯齿 · Canvas)：单元格 100px，凹凸深度固定 12px。
+  // 纯 HTML + CSS 无法自动批量生成每块随机凹凸的拼图轮廓，因此此处用正方形占位。
+  // 迁移方案：按 piece 的四邻关系决定每条边是 tab 还是 blank，
+  // 用 Path2D 画出深 12px 的圆头凸起，再 ctx.clip() 后绘制对应图片切片，
+  // 最后把每块碎片导出为独立 image / 或直接在 canvas 上做命中测试与拖动。
+  // 切勿用 CSS clip-path 硬凑畸形多边形，那会产生锯齿错位与缝隙不均。
+  void TEETH;
+})();
+</script>
+</body>
+</html>
