@@ -8,7 +8,17 @@
 * 图片处理：浏览器端 canvas 压缩（丢 EXIF/GPS）+ 服务端 sharp 归一化与多尺寸
 * 分享卡片：`next/og` 的 `ImageResponse` 动态生成，Node.js runtime，固定模板
 * 测试：Vitest（关键流程）+ Playwright（移动端主链路，可选）
-* 部署：Vercel + Supabase
+* 部署：Netlify（OpenNext 适配器 / Node 函数）或 Vercel，配 Supabase
+
+## 功能一览
+
+* **拼图解锁**：3×3 / 4×4 / 5×5 三档难度；主交互是「点两块交换」，也支持按住拖拽；带打乱动画、计时与最佳成绩
+* **2008 老 Flash 拼图外观**：纯黑底板、直角碎片、2px 黑色缝隙、最外层独立玻璃反光；「拿起」的碎片抬高 2% 并带投影
+* **12px 锯齿咬合**：Canvas + `Path2D` + `ctx.clip()` 绘制；每条内部边的凹凸由 (行, 列, 方向) 哈希唯一决定，相邻两块天然互补、最外圈平直（见 `src/lib/jigsaw.ts`，不变量写在 `tests/jigsaw.test.ts`）
+* **解锁相册**：未解锁只给标题与文案提示，已解锁可看大图；进度同时写 localStorage 与服务端 `unlocks` 表
+* **动态分享卡片**：`next/og` 固定模板 + Node.js runtime，只接受 `photoId`（反 CVE-2026-94545 的专题见第 0 节）
+* **管理后台**：封面标题连点 5 次进入 `/admin`；预签名直传 + 浏览器 canvas 压缩 + 服务端 sharp 生成多尺寸
+* **安全模型**：私有 bucket + 5 分钟签名链接 + RLS（含 anon 列级授权）+ httpOnly 匿名会话 + CSRF + 限流
 
 ---
 
@@ -290,23 +300,13 @@ supabase/migrations/
 `vercel.json` 里固定了 region 并给 `/api/*` 加了 `X-Robots-Tag: noindex`。
 一般**不需要额外 rewrite**：App Router 的路由就是最终路径；只有当你把游戏挂到子路径（例如 `https://me.com/puzzle`）时才需要配 rewrite，同时把 `NEXT_PUBLIC_SITE_URL` 改成子路径前缀。
 
-### 8.1 本项目的仓库地址（私有）
+### 8.1 克隆与部署到自己的仓库
 
-| 项目 | 值 |
-| --- | --- |
-| 网页地址 | https://github.com/renyang-create/photo-puzzle |
-| SSH 推送地址 | `git@github.com:renyang-create/photo-puzzle.git` |
-| 默认分支 | `main`（已设置上游跟踪 `origin/main`） |
+把项目推到**你自己的** GitHub 仓库（新建仓库后 `git remote add origin <你的地址>`），
+Vercel / Netlify 侧用 GitHub 集成导入即可自动部署。
 
 ```bash
-git remote -v      # origin  git@github.com:renyang-create/photo-puzzle.git (fetch/push)
-git push           # 已跟踪上游，直接推即可
-```
-
-在新机器上克隆：
-
-```bash
-git clone git@github.com:renyang-create/photo-puzzle.git
+git clone <你的仓库地址>
 cd photo-puzzle
 pnpm install
 cp .env.example .env.local   # Windows: copy .env.example .env.local
@@ -315,8 +315,9 @@ supabase db push
 pnpm dev
 ```
 
-> 该仓库是 **Private**：照片与 `SUPABASE_SERVICE_ROLE_KEY` 都不会进仓库（`.env*` 已被 `.gitignore` 排除，只提交 `.env.example`）。
-> Vercel 侧用 GitHub 集成导入该仓库即可自动部署。
+> **公开仓库前请自行确认**：`.env*` 已被 `.gitignore` 排除（只提交 `.env.example`），
+> 密钥与照片都不会进仓库；照片本身存在 Supabase 私有 bucket 里，只通过短期签名链接读取。
+> 但仍然不建议把「极度隐私的照片」放进任何联网服务，详见第 7 节。
 
 ### 8.2 备选：Netlify（**永久免费档**，无需手机号验证）
 
@@ -505,3 +506,15 @@ src/
 * **OG 中文字体**：Satori 只支持 TTF/OTF/WOFF（不支持 woff2）。默认从 CDN 拉 Noto Sans SC SubsetOTF 并缓存；拉取失败时卡片自动退化为纯英文文案，不会 500。可用 `OG_FONT_URL` 指向自己的字体文件（例如放进 `public/`）。
 * **解锁统计的身份口径**是匿名 cookie，不是用户账号；跨设备合并需要将来引入真实登录。
 * **`<img>` 而非 `next/image`**：图片是 5 分钟过期的签名链接，交给 Next 图片优化器反而会缓存过期地址，因此显式关闭了该规则并加了注释说明。
+
+---
+
+## 14. 许可证与第三方素材
+
+* **代码**：**MIT License**，见 [LICENSE](./LICENSE)。
+* **第三方开源组件**：项目名 / 作者 / 协议 / 用途 / 修改点逐条列在 [ATTRIBUTIONS.md](./ATTRIBUTIONS.md)，
+  全部为 MIT / Apache-2.0 等宽松协议。
+* **演示音频**：`public/audio/` 下三个文件来自公开素材站（来源已记录在 ATTRIBUTIONS.md）。
+  其中 `bgm.mp3` 的来源页仅以文件名标注 “no copyright music”，**无法确证授权条款** ——
+  若要商用请自行替换为拥有明确授权的素材；
+  也可以直接删掉这三个文件：`src/lib/audio.ts` 会静默失败，游戏照常可玩，只是没有声音。
