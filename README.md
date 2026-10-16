@@ -152,9 +152,10 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 
 ```
 supabase/migrations/
-├─ 20261014000000_init.sql              # 建表 + 索引 + RLS + 私有 bucket + is_admin()
-├─ 20261014000100_storage_policies.sql  # storage.objects 的 policy（只含 CREATE POLICY）
-└─ 20261014000200_seed.sql              # 随机生成初始管理员密码（只打印一次）
+├─ 20261014000000_init.sql                 # 建表 + 索引 + RLS + 私有 bucket + is_admin()
+├─ 20261014000100_storage_policies.sql     # storage.objects 的 policy（只含 CREATE POLICY）
+├─ 20261014000200_seed.sql                 # 随机生成初始管理员密码（只打印一次）
+└─ 20261014000300_photos_column_grants.sql # 收紧 anon 的列级读取权限（见 3.3）
 ```
 
 ### 3.1 注意 `storage.objects` 的权限坑
@@ -177,7 +178,7 @@ supabase/migrations/
 
 | 表 | anon | authenticated |
 | --- | --- | --- |
-| `photos` | 只能 `SELECT` `is_active = true` 的元数据 | 仅 `public.is_admin()` 为真时可读写 |
+| `photos` | 行：只能看 `is_active = true`；**列：只有 `id, title, is_active, sort_order, created_at`** | 仅 `public.is_admin()` 为真时可读写 |
 | `unlocks` | 无任何策略（服务端用 service_role 写入） | 仅管理员可读 |
 | `admin_credentials` / `admin_users` | 无策略（默认全拒） | 无策略，服务端 + `security definer` 函数访问 |
 | `admin_audit_log` | 无策略 | 仅管理员可读 |
@@ -266,6 +267,9 @@ supabase/migrations/
 * **匿名身份**：localStorage 的 `deviceId` 只用于本机体验，**不是可信身份**；服务端签发 `HttpOnly + Secure(生产) + SameSite=Lax` 的匿名 session cookie，数据库里记 `anon_session_id`，仅用于统计解锁，不承担认证。上线前在 **DevTools → Application → Cookies** 里确认三个 flag 都在。
 * **localStorage 只存体验数据**，统一 key：`photoPuzzle.deviceId` / `photoPuzzle.unlocked` / `photoPuzzle.bestTimes` / `photoPuzzle.total` / `photoPuzzle.lastDifficulty`。**不存图片 base64、不存任何 auth token。**
 * **管理员密码**：bcrypt(cost 12) 哈希存库；前端不做任何密码校验，必须在服务端比对。
+* **anon 只能读「非敏感列」**：`anon` 对 `photos` 是**列级**授权（仅 `id / title / is_active / sort_order / created_at`），`unlock_text`（解锁文案，避免剧透）与 `storage_path / thumb_path / raw_path`（私有 bucket 的对象路径）读不到。
+
+  为什么需要额外一层：RLS 只收窄「行」（`is_active = true`）**不收窄「列」**，而 anon key 是随前端 bundle 公开下发的 —— 安全审计时实测发现，任何人不带任何凭据、只用 anon key 直接打 `/rest/v1/photos?select=id,unlock_text` 就能读到全部文案。因此迁移 `20261014000300_photos_column_grants.sql` 把整表 `SELECT` 改成列级 `GRANT`，形成「行 + 列」两层收窄。回滚只需 `grant select on public.photos to anon;`。
 * **其他**：CSP / HSTS / `X-Frame-Options: DENY` / `nosniff` 等安全响应头在 `next.config.ts`；`/admin` 与所有管理 API 有独立限流。
 
 ### ⚠️ 免责与隐私提醒
