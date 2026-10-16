@@ -67,10 +67,7 @@
        board 内部碎片尺寸 100px、gap 2px 永远不变。
      · transform-origin: 0 0 —— 缩放锚点在左上角，配合坐标反向补偿。
      ============================================================================ */
-  .stage {
-    position: relative;
-    /* 舞台高度由 JS 按「缩放后的实际高度」设置，避免缩放后留下大片空白 */
-  }
+  .stage { position: relative; }
   .scaler {
     position: relative;
     transform-origin: 0 0;
@@ -81,18 +78,16 @@
      2. 拼图容器（棋盘）
      ----------------------------------------------------------------------------
      · 底色 #000：碎片之间的 2px gap 透出黑色，形成「黑色缝隙」。
-     · 这里**故意不写 overflow: hidden**：因为拖拽碎片是 board 的子节点，
-       一旦在 board 上裁剪，碎片拖出边界就会被切掉。
-       需求里「容器 overflow: hidden 裁剪多余高光」的意图，由高光层自己的
-       裁剪容器 .glass-clip 承担（见第 4 节），效果完全一致且不切碎片。
+     · 这里**故意不写 overflow: hidden**：碎片画布会比格子大一圈（给锯齿凸起留空间），
+       且拖拽碎片要能拖出棋盘；一旦在 board 上裁剪，两者都会被切掉。
+       需求里「容器 overflow: hidden 裁剪多余高光」由高光层自己的容器承担（见第 4 节）。
      ============================================================================ */
   .board {
-    position: relative;               /* 让 .dragging 的 absolute 以 board 为基准 */
+    position: relative;
     z-index: auto;                    /* 关键：不能是数值，否则会成为层叠上下文，压不住高光层 */
     display: grid;
     gap: 2px;                         /* 缝隙 2px（需求允许最大 3px） */
     background: #000;                 /* 纯黑底：缝隙靠它透出 */
-    /* 禁止整块拖选文字，避免桌面端拖拽时选中文本 */
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
@@ -102,6 +97,8 @@
   /* ============================================================================
      3. 碎片
      ----------------------------------------------------------------------------
+     .piece = 网格格子本身（100×100，也是拖拽/点击的命中区，始终保持 100×100）。
+     真正画图的是里面的 canvas：它比格子大 2×12px，用来容纳四个方向的锯齿凸起。
      【静止状态】直角、无 border / outline / box-shadow、无渐变、无缩放。
      【拖拽状态】见 .piece.dragging（scale 1.02 + 指定阴影 + z-index 999）。
      ============================================================================ */
@@ -112,12 +109,15 @@
     outline: 0;
     border-radius: 0;                 /* 完全直角，禁止圆角 */
     box-shadow: none;                 /* 静止碎片平贴画布，无悬浮感 */
-    background-color: #0a0a0a;
-    background-repeat: no-repeat;     /* 图片由 100px 方格切片铺满，不重复 */
-    background-size: 100% 100%;       /* 会被 JS 覆盖为「整张图的像素尺寸」 */
     position: relative;
-    z-index: 1;                       /* 层叠顺序：普通碎片(1) < 高光层(500) < 拖拽碎片(999) */
-    touch-action: none;               /* 手指在碎片上拖动时不由浏览器接管滚动 */
+    z-index: 1;                       /* 层叠：普通碎片(1) < 高光层(500) < 拖拽碎片(999) */
+    touch-action: none;
+    -webkit-user-drag: none;
+  }
+  .piece > canvas {
+    position: absolute;
+    display: block;
+    pointer-events: none;             /* 命中判定交给 .piece 的格子区域 */
     -webkit-user-drag: none;
   }
 
@@ -129,10 +129,9 @@
     transform: scale(1.02);
     transform-origin: 0 0;            /* 从左上角放大，避免定位偏移 */
     box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.35);   /* 仅拖拽时才有投影 */
-    border-radius: 0;                 /* 依旧直角 */
+    border-radius: 0;
     border: 0;
   }
-  /* 松手归位时的小过渡（只影响 left/top，不改布局、不改 gap） */
   .piece.returning { transition: left .16s ease-out, top .16s ease-out; }
 
   /* ============================================================================
@@ -145,7 +144,7 @@
   .glass-clip {
     position: absolute;
     left: 0; top: 0;
-    overflow: hidden;                 /* 裁掉多余渐变，高光不溢出 board 区域 */
+    overflow: hidden;
     pointer-events: none;
     z-index: 500;                     /* 普通碎片(1) < 本层(500) < 拖拽碎片(999) */
   }
@@ -166,7 +165,6 @@
     pointer-events: none;
   }
 
-  /* 说明区 */
   .tip { margin: 10px 0 0; padding: 6px 8px; background: #fffbe8; border: 1px solid #e2d49a; color: #6a5b28; font-size: 11px; }
   .tip b { color: #8a6d1a; }
   .todo { margin-top: 10px; padding: 6px 8px; background: #eef3fb; border: 1px solid #b9c9e2; color: #2f4a72; font-size: 11px; }
@@ -179,6 +177,7 @@
     <span class="brand">经典拼图 · 怀旧版<small>单文件 UI Demo</small></span>
     <div class="tools">
       <button id="btnShuffle" type="button">打乱</button>
+      <button id="btnTeeth" type="button" aria-pressed="true">锯齿：开</button>
       <button id="btnGlass" type="button" aria-pressed="true">玻璃高光：开</button>
       <label>难度
         <select id="selSize">
@@ -202,11 +201,16 @@
   <p class="tip">
     <b>试试拖拽：</b>电脑端按住任意碎片拖动，手机端用手指按住拖动。拖起时碎片会抬高（2% 放大 + 投影）并脱离玻璃反光，原位保留透明占位格，松手自动归位。<br />
     静止碎片：直角、无描边、无阴影、无渐变（反光只来自最外层那层全局高光）。
+    锯齿凹凸深度固定 12px，点上面 <b>「锯齿：开/关」</b> 可以和方块版来回对比。
   </p>
   <div class="todo">
-    <b>锯齿 TODO：</b>单元格 100px，锯齿凹凸深度固定 12px。纯 HTML + CSS 无法批量生成每块随机凹凸的拼图轮廓，
-    因此本 Demo 先用正方形碎片占位；下一步迁移 Canvas API：用 Path2D 生成含 tab / blank 的边缘（深 12px），
-    再用 <code>ctx.clip()</code>（等价于 clipPath）绘制碎片。
+    <b>锯齿实现说明（Canvas）：</b>每块碎片用 canvas 画：先用 Path2D 画出「单元格 + tab/blank」的闭合路径，
+    再 <code>ctx.clip()</code>（等价 clipPath）后绘制对应图片切片，画布比格子大 2×12px 以容纳凸起。<br />
+    <b>互补保证：</b>每条内部边属于哪两块是固定的，凹凸方向由 (行, 列, 方向) 的哈希唯一决定，
+    因此左块的凸起必然对应右块的凹槽，绝不会出现「两个凸起撞在一起」。<br />
+    <b>已知取舍：</b>点击/拖拽的命中区仍是 100×100 的格子（不是锯齿轮廓），
+    因为 DOM 命中测试看的是元素盒子，透明区域照样吃点击。要做「按轮廓命中」需要几何/逐像素判定，
+    这一步留给接入真实项目时再决定。
   </div>
 </div>
 
@@ -217,9 +221,10 @@
   /* ==========================================================================
      常量
      ========================================================================== */
-  var CELL = 100;            // 碎片格子 100 × 100
+  var CELL = 100;            // 碎片格子 100 × 100（拖拽命中区，永远不变）
   var GAP = 2;               // 网格缝隙 2px（需求允许最大 3px）
-  var TEETH = 12;            // TODO(锯齿)：凹凸深度固定 12px，交给 Canvas clipPath 实现
+  var TEETH = 12;            // 锯齿凹凸深度固定 12px
+  var CANVAS = CELL + TEETH * 2;   // 碎片画布边长：比格子大 2×12px，给凸起留空间
   var MIN_SCALE = 44 / CELL; // 触控区下限 44px → 缩放不得小于 0.44
 
   var board = document.getElementById("board");
@@ -229,19 +234,21 @@
   var glass = document.getElementById("glass");
   var readout = document.getElementById("readout");
   var btnShuffle = document.getElementById("btnShuffle");
+  var btnTeeth = document.getElementById("btnTeeth");
   var btnGlass = document.getElementById("btnGlass");
   var selSize = document.getElementById("selSize");
 
   var size = 3;
-  var scale = 1;             // 当前外层缩放系数（拖拽坐标要用它做反向补偿）
-  var photoUrl = "";
+  var scale = 1;
+  var teethOn = true;
+  var photoCanvas = null;
   var drag = null;
 
   function boardPx() { return size * CELL + (size - 1) * GAP; }
 
   /* ==========================================================================
      1. 生成一张「照片」（纯本地 canvas 绘制，单文件无需外部图片）
-        真实项目里这里换成用户的照片，碎片仍然用 background-image + position 切片。
+        真实项目里换成用户照片即可，切片映射方式完全一致。
      ========================================================================== */
   function buildPhoto() {
     var N = size * CELL;
@@ -250,7 +257,6 @@
     c.height = N;
     var g = c.getContext("2d");
 
-    // 天空
     var sky = g.createLinearGradient(0, 0, 0, N * 0.62);
     sky.addColorStop(0, "#1b2a5e");
     sky.addColorStop(0.45, "#7a4a8f");
@@ -258,7 +264,6 @@
     g.fillStyle = sky;
     g.fillRect(0, 0, N, N * 0.62);
 
-    // 夕阳
     var sunX = N * 0.63, sunY = N * 0.47, r = N * 0.1;
     var glow = g.createRadialGradient(sunX, sunY, r * 0.2, sunX, sunY, r * 2.4);
     glow.addColorStop(0, "rgba(255,238,180,0.95)");
@@ -273,7 +278,6 @@
     g.arc(sunX, sunY, r * 0.55, 0, Math.PI * 2);
     g.fill();
 
-    // 远山
     var peaks = [[0.08, 0.44], [0.22, 0.56], [0.36, 0.38], [0.54, 0.57], [0.7, 0.42], [0.86, 0.55], [1, 0.49]];
     g.fillStyle = "rgba(38,28,68,0.88)";
     g.beginPath();
@@ -283,14 +287,12 @@
     g.closePath();
     g.fill();
 
-    // 水面
     var water = g.createLinearGradient(0, N * 0.62, 0, N);
     water.addColorStop(0, "#2a2350");
     water.addColorStop(1, "#0a0920");
     g.fillStyle = water;
     g.fillRect(0, N * 0.62, N, N * 0.38);
 
-    // 波光倒影
     g.globalAlpha = 0.26;
     g.fillStyle = "#ffd79a";
     for (var k = 0; k < 18; k++) {
@@ -300,7 +302,6 @@
     }
     g.globalAlpha = 1;
 
-    // 前景剪影
     g.fillStyle = "#07060f";
     g.beginPath();
     g.moveTo(0, N);
@@ -312,7 +313,6 @@
     g.closePath();
     g.fill();
 
-    // 飞鸟
     g.strokeStyle = "rgba(18,16,38,0.85)";
     g.lineWidth = 2;
     var birds = [[0.3, 0.2, 1], [0.4, 0.15, 0.8], [0.48, 0.26, 0.7]];
@@ -323,11 +323,10 @@
       g.quadraticCurveTo(bx, by - N * 0.03 * s, bx + N * 0.03 * s, by);
       g.stroke();
     }
-
-    return c.toDataURL("image/png");
+    return c;
   }
 
-  /* Fisher-Yates（与项目里既有打乱算法一致，可注入随机源） */
+  /* Fisher-Yates（可注入随机源，和线上游戏一致） */
   function shuffled(list) {
     for (var i = list.length - 1; i > 0; i--) {
       var j = Math.floor(Math.random() * (i + 1));
@@ -339,11 +338,119 @@
   }
 
   /* ==========================================================================
-     2. 构建棋盘
+     2. 锯齿几何
+     --------------------------------------------------------------------------
+     每条内部边（两块共享）的凹凸方向由 (行, 列, 方向) 的哈希唯一决定：
+       · edgeTabOut('h', r, c) = 上面那块 (r,c) 的下边「凸出」→ 下面那块的上边「凹陷」
+       · edgeTabOut('v', r, c) = 左边那块 (r,c) 的右边「凸出」→ 右边那块的左边「凹陷」
+     同一函数被两块分别调用，因此天然互补，不会出现两个凸起对撞。
+     ========================================================================== */
+  function edgeTabOut(kind, r, c) {
+    var h = ((r * 73856093) ^ (c * 19349663) ^ (kind === "h" ? 0x9e3779b9 : 0x85ebca6b)) >>> 0;
+    return (h % 2) === 1;
+  }
+
+  /** 沿一条边画「直线」或「凸起/凹陷」 */
+  function addEdge(path, ax, ay, bx, by, nx, ny, mode, T) {
+    if (mode === "line") {
+      path.lineTo(bx, by);
+      return;
+    }
+    // 凸起与凹槽用**同一个深度**，保证两块形状完全互补；
+    // 相邻两块之间的 2px 黑缝交给 drawPiece 里「沿轮廓向内侵蚀 1px」统一制造。
+    var depth = T;
+    // 关键：凸起朝外（+法线），凹槽朝内（−法线）。
+    // 少了这个符号，凹凸会一起往外鼓，两块就会互相压住。
+    var dir = mode === "tab" ? 1 : -1;
+    var dx = bx - ax, dy = by - ay;
+    var L = Math.hypot(dx, dy);
+    var ux = dx / L, uy = dy / L;
+    var px = nx * depth * dir, py = ny * depth * dir;
+
+    // 颈部收窄到边的中段 28%，圆头凸出 depth —— 接近老 Flash 拼图的蘑菇形凸起
+    var a1x = ax + ux * L * 0.36, a1y = ay + uy * L * 0.36;
+    var b1x = ax + ux * L * 0.64, b1y = ay + uy * L * 0.64;
+    var mx = ax + ux * L * 0.5 + px, my = ay + uy * L * 0.5 + py;
+
+    path.lineTo(a1x, a1y);
+    path.bezierCurveTo(
+      a1x + ux * L * 0.03 + px * 0.8, a1y + uy * L * 0.03 + py * 0.8,
+      mx - ux * L * 0.11 + px * 0.8, my - uy * L * 0.11 + py * 0.8,
+      mx, my
+    );
+    path.bezierCurveTo(
+      mx + ux * L * 0.11 + px * 0.8, my + uy * L * 0.11 + py * 0.8,
+      b1x + ux * L * 0.03 + px * 0.8, b1y + uy * L * 0.03 + py * 0.8,
+      b1x, b1y
+    );
+    path.lineTo(bx, by);
+  }
+
+  /** 生成某一块的闭合轮廓（坐标系是它自己的画布） */
+  function buildPath(row, col, n, T, rect) {
+    var path = new Path2D();
+    var line = "line";
+    var top = row === 0 ? line : (edgeTabOut("h", row - 1, col) ? "hole" : "tab");
+    var bottom = row === n - 1 ? line : (edgeTabOut("h", row, col) ? "tab" : "hole");
+    var left = col === 0 ? line : (edgeTabOut("v", row, col - 1) ? "hole" : "tab");
+    var right = col === n - 1 ? line : (edgeTabOut("v", row, col) ? "tab" : "hole");
+
+    var x = rect.x, y = rect.y, w = rect.w, h = rect.h;
+    path.moveTo(x, y);
+    addEdge(path, x, y, x + w, y, 0, -1, top, T);                 // 上边：左 → 右
+    addEdge(path, x + w, y, x + w, y + h, 1, 0, right, T);         // 右边：上 → 下
+    addEdge(path, x + w, y + h, x, y + h, 0, 1, bottom, T);        // 下边：右 → 左
+    addEdge(path, x, y + h, x, y, -1, 0, left, T);                 // 左边：下 → 上
+    path.closePath();
+    return path;
+  }
+
+  /** 把某一块画成 canvas：先 clip 轮廓，再贴对应位置的图片切片 */
+  function drawPiece(canvas, row, col, n, withTeeth) {
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.round(CANVAS * dpr);
+    canvas.height = Math.round(CANVAS * dpr);
+    canvas.style.width = CANVAS + "px";
+    canvas.style.height = CANVAS + "px";
+    canvas.style.left = -TEETH + "px";
+    canvas.style.top = -TEETH + "px";
+
+    var ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, CANVAS, CANVAS);
+
+    var rect = { x: TEETH, y: TEETH, w: CELL, h: CELL };
+    var path = withTeeth
+      ? buildPath(row, col, n, TEETH, rect)
+      : (function () {
+          var p = new Path2D();
+          p.rect(rect.x, rect.y, rect.w, rect.h);
+          return p;
+        })();
+
+    ctx.save();
+    ctx.clip(path);
+    // 图片的 (row,col) 切片正好落在画布的 [TEETH, TEETH, CELL, CELL] 上
+    ctx.drawImage(photoCanvas, TEETH - col * CELL, TEETH - row * CELL);
+    ctx.restore();
+
+    if (withTeeth) {
+      // 沿轮廓向内侵蚀 1px：相邻两块轮廓完全相同、各自缩 1px，
+      // 之间就留下宽度恒为 2px 的黑缝 —— 比手工调深度均匀得多，也保证互补。
+      ctx.save();
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.lineWidth = 2;              // 描边以路径为中心 → 正好向内侵蚀 1px
+      ctx.strokeStyle = "#000";
+      ctx.stroke(path);
+      ctx.restore();
+    }
+  }
+
+  /* ==========================================================================
+     3. 构建棋盘
      ========================================================================== */
   function buildBoard() {
-    var N = size * CELL;
-    photoUrl = buildPhoto();
+    photoCanvas = buildPhoto();
 
     board.innerHTML = "";
     board.style.gridTemplateColumns = "repeat(" + size + ", " + CELL + "px)";
@@ -357,18 +464,19 @@
     for (var i = 0; i < size * size; i++) order.push(i);
     shuffled(order);
 
-    for (var n = 0; n < order.length; n++) {
-      var slot = order[n];
+    for (var k = 0; k < order.length; k++) {
+      var slot = order[k];
       var row = Math.floor(slot / size);
       var col = slot % size;
 
       var el = document.createElement("div");
       el.className = "piece";
       el.dataset.slot = String(slot);
-      // 与线上游戏一致：background-image + background-position 做方格切片（不裁剪、不变形）
-      el.style.backgroundImage = "url(" + photoUrl + ")";
-      el.style.backgroundSize = N + "px " + N + "px";
-      el.style.backgroundPosition = (-col * CELL) + "px " + (-row * CELL) + "px";
+
+      var canvas = document.createElement("canvas");
+      drawPiece(canvas, row, col, size, teethOn);
+      el.appendChild(canvas);
+
       board.appendChild(el);
     }
 
@@ -376,14 +484,14 @@
   }
 
   /* ==========================================================================
-     3. 响应式：只缩放外层 .scaler，内部 grid / 碎片尺寸 / gap 一律不动
+     4. 响应式：只缩放外层 .scaler，内部 grid / 碎片尺寸 / gap 一律不动
      ========================================================================== */
   function layout() {
     var bw = boardPx();
     var avail = stage.clientWidth;
     var s = avail > 0 ? avail / bw : 1;
     if (s > 1) s = 1;
-    if (s < MIN_SCALE) s = MIN_SCALE;     // 保证实际触控区 >= 44px
+    if (s < MIN_SCALE) s = MIN_SCALE;
     scale = s;
 
     scaler.style.width = bw + "px";
@@ -394,12 +502,13 @@
 
     readout.innerHTML =
       "单元格 <b>100 × 100</b> · 缝隙 <b>2px</b> · 底色 <b>#000</b> · 网格 <b>" + size + "×" + size + "</b>" +
+      " · 锯齿 <b>" + (teethOn ? "开（深 12px）" : "关（方块占位）") + "</b>" +
       " · 外层缩放 <b>scale(" + scale.toFixed(3) + ")</b>" +
       " · 实际触控区 <b>" + Math.round(CELL * scale) + "px</b>（要求 ≥ 44px）";
   }
 
   /* ==========================================================================
-     4. 拖拽（鼠标 + 触屏双端）
+     5. 拖拽（鼠标 + 触屏双端）
      --------------------------------------------------------------------------
      · absolute 定位（不用 fixed）
      · transform-origin: 0 0，scale(1.02) 只作用于拖拽元素
@@ -410,11 +519,9 @@
     var pieceRect = piece.getBoundingClientRect();
     var boardRect = board.getBoundingClientRect();
 
-    // 未缩放坐标系下的原位（缩放锚点在左上角，所以这样换算是对的）
     var homeLeft = (pieceRect.left - boardRect.left) / scale;
     var homeTop = (pieceRect.top - boardRect.top) / scale;
 
-    // 原位留一个 100×100 透明占位，保证 grid 布局不位移
     var ph = document.createElement("div");
     ph.className = "slot";
     piece.parentNode.insertBefore(ph, piece);
@@ -440,7 +547,6 @@
     var left = (pt.x - boardRect.left) / scale - drag.grabDX;
     var top = (pt.y - boardRect.top) / scale - drag.grabDY;
 
-    // 简单边界限制：碎片不超出视口
     var minLeft = -boardRect.left / scale;
     var maxLeft = (window.innerWidth - boardRect.left) / scale - CELL;
     var minTop = -boardRect.top / scale;
@@ -459,7 +565,7 @@
     var ph = drag.ph;
     var homeLeft = drag.homeLeft;
     var homeTop = drag.homeTop;
-    drag = null;                       // 先清空，允许立刻开始下一次拖拽
+    drag = null;
 
     el.classList.add("returning");
     el.style.left = homeLeft + "px";
@@ -468,7 +574,6 @@
     var done = false;
     function restore() {
       if (done) return;
-      // 若用户已重新抓起这块碎片，就不要复原样式
       if (drag && drag.el === el) return;
       done = true;
       el.classList.remove("returning", "dragging");
@@ -477,7 +582,7 @@
       if (ph.parentNode) ph.parentNode.removeChild(ph);
     }
     el.addEventListener("transitionend", restore, { once: true });
-    window.setTimeout(restore, 200);   // 兜底：transitionend 未触发时也能复原
+    window.setTimeout(restore, 200);
   }
 
   function pointOf(e) {
@@ -486,12 +591,11 @@
     return { x: e.clientX, y: e.clientY };
   }
 
-  /* --- 鼠标 --- */
   board.addEventListener("mousedown", function (e) {
     if (drag) return;
     var piece = e.target.closest(".piece");
     if (!piece) return;
-    e.preventDefault();                // 避免桌面端拖出文字选择 / 图片拖影
+    e.preventDefault();
     beginDrag(piece, pointOf(e));
   });
   window.addEventListener("mousemove", function (e) {
@@ -503,8 +607,7 @@
     endDrag();
   });
 
-  /* --- 触屏 --- */
-  // touchstart 里**不** preventDefault：此刻还不能确定是「拖碎片」还是「滚页面」。
+  // touchstart 不 preventDefault：此刻还不能确定是「拖碎片」还是「滚页面」
   board.addEventListener("touchstart", function (e) {
     if (drag) return;
     var piece = e.target.closest(".piece");
@@ -512,7 +615,6 @@
     beginDrag(piece, pointOf(e));
   }, { passive: true });
 
-  // 只有 drag 已经激活（确实在拖碎片）时才阻止默认行为，避免影响页面正常滚动 / 缩放
   window.addEventListener("touchmove", function (e) {
     if (!drag) return;
     e.preventDefault();
@@ -529,13 +631,25 @@
   });
 
   /* ==========================================================================
-     5. 工具条
+     6. 工具条
      ========================================================================== */
   btnShuffle.addEventListener("click", function () {
-    // 仅打乱「哪块碎片显示原图的哪一格」，纯视觉演示，不涉及拼图判定逻辑
     var pieces = Array.prototype.slice.call(board.querySelectorAll(".piece"));
     var order = shuffled(pieces.map(function (p, i) { return i; }));
     for (var i = 0; i < pieces.length; i++) board.appendChild(pieces[order[i]]);
+  });
+
+  btnTeeth.addEventListener("click", function () {
+    teethOn = btnTeeth.getAttribute("aria-pressed") !== "true";
+    btnTeeth.setAttribute("aria-pressed", teethOn ? "true" : "false");
+    btnTeeth.textContent = "锯齿：" + (teethOn ? "开" : "关");
+    // 只重画 canvas，不动任何布局
+    var pieces = board.querySelectorAll(".piece");
+    for (var i = 0; i < pieces.length; i++) {
+      var slot = Number(pieces[i].dataset.slot);
+      drawPiece(pieces[i].firstElementChild, Math.floor(slot / size), slot % size, size, teethOn);
+    }
+    layout();
   });
 
   btnGlass.addEventListener("click", function () {
@@ -562,18 +676,7 @@
   window.addEventListener("resize", onResize);
   window.addEventListener("orientationchange", onResize);
 
-  /* ==========================================================================
-     启动
-     ========================================================================== */
   buildBoard();
-
-  // TODO(锯齿 · Canvas)：单元格 100px，凹凸深度固定 12px。
-  // 纯 HTML + CSS 无法自动批量生成每块随机凹凸的拼图轮廓，因此此处用正方形占位。
-  // 迁移方案：按 piece 的四邻关系决定每条边是 tab 还是 blank，
-  // 用 Path2D 画出深 12px 的圆头凸起，再 ctx.clip() 后绘制对应图片切片，
-  // 最后把每块碎片导出为独立 image / 或直接在 canvas 上做命中测试与拖动。
-  // 切勿用 CSS clip-path 硬凑畸形多边形，那会产生锯齿错位与缝隙不均。
-  void TEETH;
 })();
 </script>
 </body>
