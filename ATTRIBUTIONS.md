@@ -68,19 +68,21 @@
 
 ---
 
-## A2. 音频素材（非软件依赖，但同样需要标注来源）
+## A2. 音频素材（**已从仓库移除**，仅保留来源记录）
 
-| 用途 | 文件 | 原标题（来源） | 说明 |
+开源前复核发现：这三段演示音频的来源页只用文件名 / 昵称标注「无版权」，**无法确证具体授权条款**
+（免费素材通常仍要求署名或限制商用）。为避免把许可不清的资源带进公开仓库，**已全部删除** ——
+本仓库不再包含任何音频文件。
+
+| 用途 | 原文件 | 原标题（来源） | 说明 |
 | --- | --- | --- | --- |
-| 背景音乐（循环） | `public/audio/bgm.mp3` | `alex-morgan-no-copyright-music-1015` | 作者标注为 Alex Morgan，文件名自带 "no copyright music" |
-| 按住 / 松开音效 | `public/audio/bubble-pop.mp3` | `linhmitto-bubblepop-254773` | 作者标注为 linhmitto（泡泡音） |
-| 拼图完成音效 | `public/audio/ding.mp3` | `freesound_community-ding-36029` | 来自 freesound 社区素材（叮声） |
+| 背景音乐（循环） | ~~`public/audio/bgm.mp3`~~ | `alex-morgan-no-copyright-music-1015` | 作者标注为 Alex Morgan，文件名自带 "no copyright music"（约 6 MB） |
+| 按住 / 松开音效 | ~~`public/audio/bubble-pop.mp3`~~ | `linhmitto-bubblepop-254773` | 作者标注为 linhmitto（泡泡音） |
+| 拼图完成音效 | ~~`public/audio/ding.mp3`~~ | `freesound_community-ding-36029` | 来自 freesound 社区素材（叮声） |
 
-* 这三段音频由使用者（本项目作者）自行选择并提供，均取自标注为「无版权 / 免费素材」的渠道。
-* **请自行再核对一次授权条款**：免费素材通常仍要求署名或限制商用，本项目默认仅个人使用；
-  若你要公开分发或商用，请到原始素材页确认许可，并把署名要求补到本文件。
-* 本项目对音频仅做**使用**（播放），未修改原始音轨；播放策略（循环、压低、静音开关）全部在
-  `src/lib/audio.ts` 中实现。
+* 想恢复声音：把你的音频按同名放进 `public/audio/`（文件名与用途见该目录 README）。
+* 本项目对音频只做**播放**，不修改原始音轨；播放策略（循环、压低、静音开关）全部在 `src/lib/audio.ts` 中实现，
+  缺文件时静默失败，游戏照常可玩。
 
 ---
 

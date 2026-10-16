@@ -486,7 +486,7 @@ src/
 │  ├─ ui/                         shadcn/ui（CLI 生成）
 │  └─ share-button / sound-toggle / hidden-admin-trigger / local-stats
 ├─ hooks/                         use-local-progress / use-sound-enabled（useSyncExternalStore 订阅 localStorage）
-├─ public/audio/                  bgm.mp3（循环）· bubble-pop.mp3（按住/松开）· ding.mp3（完成）
+├─ public/audio/                  音频占位目录（仓库不含音频文件，见该目录 README）
 ├─ lib/
 │  ├─ supabase/{client,server,admin}.ts
 │  ├─ session-core.ts / session.ts   匿名与管理员 cookie
@@ -514,7 +514,8 @@ src/
 * **代码**：**MIT License**，见 [LICENSE](./LICENSE)。
 * **第三方开源组件**：项目名 / 作者 / 协议 / 用途 / 修改点逐条列在 [ATTRIBUTIONS.md](./ATTRIBUTIONS.md)，
   全部为 MIT / Apache-2.0 等宽松协议。
-* **演示音频**：`public/audio/` 下三个文件来自公开素材站（来源已记录在 ATTRIBUTIONS.md）。
-  其中 `bgm.mp3` 的来源页仅以文件名标注 “no copyright music”，**无法确证授权条款** ——
-  若要商用请自行替换为拥有明确授权的素材；
-  也可以直接删掉这三个文件：`src/lib/audio.ts` 会静默失败，游戏照常可玩，只是没有声音。
+* **音频**：**仓库不包含任何音频文件** —— 原演示素材（背景音乐 + 两个音效）的来源页只以文件名标注
+  “no copyright music”，无法确证授权条款，已在开源前全部移除（来源记录见 ATTRIBUTIONS.md A2 节）。
+  代码引用的是 `public/audio/{bgm,bubble-pop,ding}.mp3` 三个相对路径，把你的音频按同名放进去即可恢复声音
+  （见 `public/audio/README.md`）。缺文件不会报错：`src/lib/audio.ts` 对播放失败做了兜底，
+  游戏照常可玩，只是没有声音。

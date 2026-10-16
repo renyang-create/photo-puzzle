@@ -34,6 +34,12 @@ yarn-error.log*
 .env*
 !.env.example
 
+# 音频（仓库不含演示音频，把自己的文件放进 public/audio/；详见该目录 README）
+/public/audio/*.mp3
+/public/audio/*.wav
+/public/audio/*.ogg
+/public/audio/*.m4a
+
 # playwright
 /test-results/
 /playwright-report/
