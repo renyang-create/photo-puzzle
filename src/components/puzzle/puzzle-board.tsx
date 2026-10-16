@@ -4,12 +4,11 @@ import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { audio } from "@/lib/audio";
+import { TEETH_DEPTH_PX, drawPieceToCanvas } from "@/lib/jigsaw";
 import {
   MIN_TOUCH_TARGET_PX,
   createShuffledOrder,
   isSolved,
-  pieceBackgroundPosition,
-  pieceBackgroundSize,
   pieceCount,
   slotToGrid,
   swapSlots,
@@ -26,10 +25,12 @@ import {
  *     于是只有在拼图区域内才会阻断默认滚动，页面其他区域照常滚动。
  *   - 每块最小 44px 触控区：尺寸用 CSS 表达式直接兜底，不满足时会自动放大棋盘。
  *
- * 渲染方案：纯 DOM 切片。
- *   容器是正方形，每块 background-size: (n*100)% + background-position 定位，
- *   等价于 `object-fit: cover` 的正方形裁剪，绝不变形；
- *   位移用 transform(x, y) 交给合成层，移动端更稳。
+ * 渲染方案：Canvas + Path2D + clip（等价 clipPath）。
+ *   每块是一个与格子等大的按钮（命中区），里面叠一张比格子大 2×12px 的 canvas：
+ *   先在 canvas 上画出「单元格 + 锯齿凸起/凹槽」的闭合轮廓，ctx.clip() 后贴图片切片，
+ *   再沿轮廓向内侵蚀 1px —— 相邻两块之间就留下恒定 2px 的黑色缝隙（不给碎片描边）。
+ *   位移仍然用 transform(x, y) 交给合成层，所以移动端依旧顺滑。
+ *   锯齿几何与互补保证见 lib/jigsaw.ts。
  *
  * 完成判定：order[slot] === slot，即每块的 data-index === data-slot。
  * 打乱用 Fisher-Yates（见 lib/puzzle.ts），并保证初始不是已完成状态。
@@ -41,6 +42,58 @@ import {
  * 层叠顺序严格为：普通碎片(1) < 玻璃高光层(500) < 拿起中的碎片(999)，
  * 因此「拿起」的碎片会自动越过高光层，既不用改碎片样式，也不用挪动 DOM 节点。
  */
+
+/**
+ * 单块碎片的画布：轮廓、裁剪、图片切片、缝隙侵蚀全部交给 lib/jigsaw。
+ *
+ * canvas 比格子大 2×TEETH_DEPTH_PX（容纳锯齿凸起），因此它会超出按钮的盒子 ——
+ * 这也是棋盘（以及按钮本身）绝对不能 overflow:hidden 的原因。
+ * 只依赖 row / col / cell / image，所以相邻两块交换时只有这两块重画。
+ */
+function PieceCanvas({
+  image,
+  row,
+  col,
+  size,
+  cell,
+}: {
+  image: CanvasImageSource | null;
+  row: number;
+  col: number;
+  size: number;
+  cell: number;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const side = cell + TEETH_DEPTH_PX * 2;
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas || !image || cell <= 0) return;
+    drawPieceToCanvas(canvas, {
+      image,
+      boardPx: size * cell,
+      row,
+      col,
+      size,
+      cell,
+      seam: PIECE_GAP_PX,
+    });
+  }, [image, row, col, size, cell]);
+
+  return (
+    <canvas
+      ref={ref}
+      aria-hidden
+      className="pointer-events-none absolute block"
+      style={{
+        left: -TEETH_DEPTH_PX,
+        top: -TEETH_DEPTH_PX,
+        width: side,
+        height: side,
+      }}
+    />
+  );
+}
 
 export interface PuzzleBoardProps {
   imageUrl: string;
@@ -96,6 +149,7 @@ export function PuzzleBoard({
   const [selected, setSelected] = useState<number | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [peeking, setPeeking] = useState(false);
+  const [bitmap, setBitmap] = useState<HTMLImageElement | null>(null);
 
   const total = pieceCount(difficulty);
 
@@ -112,6 +166,32 @@ export function PuzzleBoard({
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
+
+  /* ---------- 碎片的位图：canvas 切片必须先把图片解码好 ---------- */
+  useEffect(() => {
+    let alive = true;
+    // 带 crossOrigin 时 canvas 不被污染（能读回像素，便于自动化验收）；
+    // 万一对象存储没回 CORS 头，就退回普通加载 —— 绘制照常，只是读不了像素。
+    const image = new window.Image();
+    image.decoding = "async";
+    image.crossOrigin = "anonymous";
+    image.onload = () => {
+      if (alive) setBitmap(image);
+    };
+    image.onerror = () => {
+      if (!alive) return;
+      const fallback = new window.Image();
+      fallback.decoding = "async";
+      fallback.onload = () => {
+        if (alive) setBitmap(fallback);
+      };
+      fallback.src = imageUrl;
+    };
+    image.src = imageUrl;
+    return () => {
+      alive = false;
+    };
+  }, [imageUrl]);
 
   /* ---------- 打乱动画结束后才开始计时 ---------- */
   useEffect(() => {
@@ -244,11 +324,10 @@ export function PuzzleBoard({
               // 「拿起」= 点选态或拖拽态：老 Flash 里只有这一种状态才有放大与投影
               const lifted = isSelected || isDragging;
               const solved = phase === "solved";
-              // 缝隙居中：每块向内收 PIECE_GAP_PX / 2，上下左右对称
-              const halfGap = PIECE_GAP_PX / 2;
-              const baseX = col * cellSize + halfGap;
-              const baseY = row * cellSize + halfGap;
-              const pieceSize = Math.max(1, cellSize - PIECE_GAP_PX);
+              // 缝隙不再靠「缩小格子」制造，而是由 canvas 沿轮廓侵蚀（见 lib/jigsaw）：
+              // 因此按钮就是完整的一格，命中区更大，定位也不需要半像素补偿。
+              const baseX = col * cellSize;
+              const baseY = row * cellSize;
 
               return (
                 <motion.button
@@ -262,13 +341,9 @@ export function PuzzleBoard({
                   disabled={!interactive}
                   className="absolute top-0 left-0 rounded-none border-0 will-change-transform select-none"
                   style={{
-                    // 缝隙做法：碎片比格子小 PIECE_GAP_PX，露出底层 #000 形成黑色缝隙
-                    width: pieceSize,
-                    height: pieceSize,
-                    backgroundImage: `url(${imageUrl})`,
-                    backgroundSize: pieceBackgroundSize(difficulty),
-                    backgroundPosition: pieceBackgroundPosition(pieceId, difficulty),
-                    backgroundRepeat: "no-repeat",
+                    // 按钮 = 命中区 = 完整一格；图案由内部那张外扩 12px 的 canvas 画
+                    width: cellSize,
+                    height: cellSize,
                     touchAction: "none",
                     WebkitUserSelect: "none",
                     WebkitTouchCallout: "none",
@@ -346,7 +421,16 @@ export function PuzzleBoard({
                     setDrag(null);
                   }}
                   onContextMenu={(event) => event.preventDefault()}
-                />
+                >
+                  {/* 锯齿碎片：轮廓 + 图片切片全画在这张 canvas 上 */}
+                  <PieceCanvas
+                    image={bitmap}
+                    row={row}
+                    col={col}
+                    size={difficulty}
+                    cell={cellSize}
+                  />
+                </motion.button>
               );
             })}
 
