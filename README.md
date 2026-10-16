@@ -374,6 +374,11 @@ pnpm dev
 | 按住 / 松开 | `public/audio/bubble-pop.mp3` | `pointerdown` 响一次、`pointerup` 再响一次（点选与拖拽都算） |
 | 拼图完成 | `public/audio/ding.mp3` | 最后一次交换被判定为完成时立即响 |
 
+> ⚠️ **仓库不含音频文件**：上表三个 mp3 属**自备素材**（原演示素材的来源页只写 “no copyright music”，
+> 授权条款无法确证，已在开源前全部移除，来源记录见 `ATTRIBUTIONS.md`）。按同名放进 `public/audio/`
+> 即恢复声音 —— 见 `public/audio/README.md` 与 §14。**缺文件不会报错**：`src/lib/audio.ts` 对播放失败
+> 做了兜底，游戏照常可玩，只是没有声音。
+
 * **右上角喇叭按钮**：开启显示 `Volume2`（喇叭 + 声波），关闭显示 `VolumeOff`（喇叭 + 一斜杠）。
   状态存在 `localStorage` 的 `photoPuzzle.soundEnabled`（`1` / `0`），刷新后保持。
 * **有音效时自动压低 BGM**：`0.35 → 0.12`（60ms 内让位），音效结束后 200ms 平滑恢复；「叮」的压低时长
@@ -407,8 +412,8 @@ pnpm dev
 - [x] 进入拼图页后背景音乐循环播放；右上角喇叭可静音（关闭时图标带斜杠），状态刷新后保持
 - [x] 按住拼图块与松开时各有泡泡音效；拼好照片时响「叮」
 - [x] 音效播放期间 BGM 自动压低（0.35 → 0.12），音效结束 200ms 内平滑恢复
-- [x] 静音后 BGM 与音效同时停止；三个 mp3 都在 `public/audio/` 下随站点静态提供
-- [x] `pnpm lint` / `pnpm typecheck` / `pnpm build` / `pnpm test` 全绿（55 个单测）
+- [x] 静音后 BGM 与音效同时停止；音频走 `public/audio/` 静态路径（**仓库不含音频文件**，自备同名素材即恢复声音，见 §9 与 §14）
+- [x] `pnpm lint` / `pnpm typecheck` / `pnpm build` / `pnpm test` 全绿（62 个单测）
 
 ---
 
@@ -464,7 +469,8 @@ set-cookie: pp_anon=…; Path=/; Max-Age=31536000; Secure; HttpOnly; SameSite=la
 * `local-store.test.ts`：五个 localStorage key 的契约、最佳成绩不被更慢的成绩覆盖、脏数据降级、幂等
 * `security.test.ts`：匿名 / 管理员 JWT 的签名镜像与 kind 隔离、被篡改的 token 失效、路径穿越与 SVG MIME 被拒、OG 文本白名单
 * `image-client.test.ts`：长边 2000 等比缩放、只缩不放、极端长条图不为 0
-* `audio.test.ts`：三个 mp3 **真实存在于 `public/audio/`**（资源路径契约）、压低音量必须小于默认音量、
+* `audio.test.ts`：三个音频的**引用路径契约**（固定为 `/audio/*.mp3`）、**文件缺席属合法状态**（仓库不含音频；
+  自备素材若已放置则必须位于 `public/audio/` 且非空，防止误提交空占位文件）、压低音量必须小于默认音量、
   静音时恒为 0、`fadeVolume` 插值两端与越界夹取、「叮」的压低时长长于普通音效、开关状态的脏值解析
 
 ---

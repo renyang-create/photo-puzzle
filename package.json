@@ -2,6 +2,20 @@
   "name": "photo-puzzle",
   "version": "0.1.0",
   "private": true,
+  "description": "照片拼图解锁：把自己的照片变成可分享的拼图小游戏（Next.js 16 + Supabase）",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/renyang-create/photo-puzzle.git"
+  },
+  "author": "renyang-create",
+  "keywords": [
+    "nextjs",
+    "supabase",
+    "puzzle",
+    "photo",
+    "netlify"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",

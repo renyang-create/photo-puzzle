@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -18,8 +18,8 @@ import {
   resolveSoundEnabled,
 } from "@/lib/local-store";
 
-describe("音频资源路径（public/audio 必须真实存在）", () => {
-  it("三个 mp3 都在 public 目录下", () => {
+describe("音频资源路径（仓库不含音频，只锁定路径契约）", () => {
+  it("三个音频的引用路径固定为 /audio/*.mp3", () => {
     const expected: Array<[string, string]> = [
       ["bgm", "/audio/bgm.mp3"],
       ["press", "/audio/bubble-pop.mp3"],
@@ -28,8 +28,26 @@ describe("音频资源路径（public/audio 必须真实存在）", () => {
 
     for (const [key, url] of expected) {
       expect(AUDIO_SOURCES[key as keyof typeof AUDIO_SOURCES]).toBe(url);
+    }
+  });
+
+  /**
+   * 音频**不是**仓库内容：原演示素材授权无法确证，已在开源前移除，
+   * 使用者按同名放进 public/audio/ 即恢复声音（见 public/audio/README.md）。
+   * 因此这里不能断言「文件必须存在」—— 那会让全新克隆的仓库测试直接变红。
+   * 只在文件确实存在时校验一下「位置对、不是空文件」，防止误提交占位文件或放错目录。
+   */
+  it("音频为自备素材：缺席合法；若已放置则必须位于 public/audio/ 且非空", () => {
+    for (const url of Object.values(AUDIO_SOURCES)) {
       const onDisk = join(process.cwd(), "public", url.replace(/^\//, ""));
-      expect(existsSync(onDisk), `缺少音频文件：${onDisk}`).toBe(true);
+
+      if (!existsSync(onDisk)) {
+        continue;
+      }
+
+      expect(statSync(onDisk).size, `音频文件是空的：${onDisk}`).toBeGreaterThan(
+        0,
+      );
     }
   });
 });
