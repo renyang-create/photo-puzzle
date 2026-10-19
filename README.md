@@ -3,6 +3,10 @@
 一个「专属个人游戏」形态的移动端 H5 拼图相册：把照片切成拼图，**拼好才看得到原图**。
 朋友圈发一条链接就能玩，不用下载、不用注册。照片不落在公开直链上，全部走私有 bucket + 服务端短期签名链接。
 
+> **在线演示**：<https://tangerine-yeot-4635a8.netlify.app>
+> 演示站为作者自用实例（照片即作者自己的），管理员入口见第 4 节（封面连点 5 次进 `/admin`）。
+> Supabase 免费项目空闲会被暂停，首次打开可能需要等几秒唤醒。
+
 * 拼图载体：Next.js App Router + TypeScript + Tailwind CSS v4 + shadcn/ui + framer-motion
 * 数据与存储：Supabase（Postgres + Auth + Storage），数据层用 `@supabase/ssr` + `supabase-js` + Server/Route Handler，不引入 ORM
 * 图片处理：浏览器端 canvas 压缩（丢 EXIF/GPS）+ 服务端 sharp 归一化与多尺寸
