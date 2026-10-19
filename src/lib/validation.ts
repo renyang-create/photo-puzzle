@@ -76,6 +76,14 @@ export const galleryQuerySchema = z.object({
   difficulty: z.string().optional(),
 });
 
+/**
+ * 访问打点：只接受两种类型，不接收任何自由文本
+ * （来源域名与客户端分类都在服务端从请求头推导，前端无从伪造）。
+ */
+export const visitPayloadSchema = z.object({
+  kind: z.union([z.literal("view"), z.literal("play")]),
+});
+
 export const ogQuerySchema = z.object({
   // OG 路由只接受一个参数：photoId。固定模板，不接受任何自由文本。
   photoId: uuidSchema.optional(),

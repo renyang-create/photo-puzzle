@@ -4,6 +4,7 @@ import { ImageIcon, Puzzle, ShieldCheck } from "lucide-react";
 import { HiddenAdminTrigger } from "@/components/hidden-admin-trigger";
 import { LocalStats } from "@/components/local-stats";
 import { ShareButton } from "@/components/share-button";
+import { VisitBeacon } from "@/components/visit-beacon";
 import { buttonVariants } from "@/components/ui/button";
 import { publicEnv } from "@/lib/env.public";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ export default function CoverPage() {
 
   return (
     <main className="relative flex flex-1 flex-col items-center justify-center overflow-hidden px-5 py-10">
+      <VisitBeacon kind="view" />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 opacity-70"

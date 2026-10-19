@@ -266,6 +266,8 @@ supabase/migrations/
 | GET / POST | `/api/admin/photos` | 列出照片（含解锁数） / 用已直传的 raw 对象创建照片记录 |
 | PATCH / DELETE | `/api/admin/photos/[id]` | 上下架、改文案 / 删除记录 + 清理 Storage 对象 |
 | GET | `/api/og?photoId=<uuid>` | 动态分享卡片（Node.js runtime，固定模板，只接受 photoId） |
+| POST | `/api/visits` | 自建访问打点：只接受 `{kind:"view"\|"play"}`，设备哈希 / 客户端分类 / 来源域名都由**服务端**推导，永远返回 204（统计失败不影响游戏） |
+| GET | `/api/admin/stats?days=14` | 后台数据概览：聚合 `visits` + `unlocks`，返回面板数据与 Markdown 报告摘要 |
 
 所有写操作都会：① 校验同源（`Origin` vs `Host`，CSRF 防护）；② 走进程内滑动窗口限流；③ 服务端鉴权。
 
@@ -285,6 +287,25 @@ supabase/migrations/
 
   为什么需要额外一层：RLS 只收窄「行」（`is_active = true`）**不收窄「列」**，而 anon key 是随前端 bundle 公开下发的 —— 安全审计时实测发现，任何人不带任何凭据、只用 anon key 直接打 `/rest/v1/photos?select=id,unlock_text` 就能读到全部文案。因此迁移 `20261014000300_photos_column_grants.sql` 把整表 `SELECT` 改成列级 `GRANT`，形成「行 + 列」两层收窄。回滚只需 `grant select on public.photos to anon;`。
 * **其他**：CSP / HSTS / `X-Frame-Options: DENY` / `nosniff` 等安全响应头在 `next.config.ts`；`/admin` 与所有管理 API 有独立限流。
+
+### 7.1 访问统计（自建，无第三方）
+
+后台能看到「多少人打开、多少人进拼图页、多少人拼完、平均多久」，数据全部落在**你自己的 Supabase**，不接任何第三方统计脚本、不需要额外账号。
+
+* **表**：`public.visits`（迁移 `20261019000000_visits.sql`）。字段只有：`day`（北京时间日期）、`device_hash`、`kind`（`view` / `play`）、`client`（粗分类）、`referrer_host`、`created_at`。
+* **不采集什么**：**不存 IP、不存 UA 原文、不存完整 Referer、不用第三方 Cookie、不做跨站关联**。
+* **device_hash**：`HMAC-SHA256(匿名 session id, SESSION_PASSWORD)` 取前 24 位 —— 同一设备稳定、无法反推、也无法跨站追踪。
+* **前端只能发 `{"kind":"view"|"play"}`**：来源域名、客户端分类、日期都是服务端从请求头推导的，前端改不了、也伪造不了。
+* **写入失败不影响游戏**：`/api/visits` 永远返回 204；忘了建表也只是后台面板提示报错，玩家侧无感。
+* **机器人排除**：`client = 'bot'`（curl / headless / 各类爬虫）在聚合时剔除，避免 UV 虚高。
+* **口径**：
+  * 首页 PV / UV ← `kind='view'` 的行数与 distinct 设备
+  * 拼图页 PV / UV ← `kind='play'`
+  * 完成次数 ← `unlocks` 行数；完成设备 ← distinct 设备
+  * 进入率 = 拼图页 UV / 首页 UV；完成率 = 完成设备 / 拼图页 UV（基于设备数，比 PV 稳）
+  * 回访设备 = 统计窗口内出现在 ≥ 2 个日期上的设备
+* **在哪看**：`/admin` 登录后顶部「数据概览」，可切 7 / 14 / 30 天；「复制报告」会生成一段 **Markdown 摘要**（概览 + 难度分布 + 来源 + 每日明细表 + 口径说明），可以直接贴进报告。
+* **建表（只需一次）**：`pnpm db:push`，或打开 Supabase Dashboard → `SQL Editor`，粘贴 `supabase/migrations/20261019000000_visits.sql` 的内容执行。
 
 ### ⚠️ 免责与隐私提醒
 
@@ -417,7 +438,7 @@ pnpm dev
 - [x] 按住拼图块与松开时各有泡泡音效；拼好照片时响「叮」
 - [x] 音效播放期间 BGM 自动压低（0.35 → 0.12），音效结束 200ms 内平滑恢复
 - [x] 静音后 BGM 与音效同时停止；音频走 `public/audio/` 静态路径（**仓库不含音频文件**，自备同名素材即恢复声音，见 §9 与 §14）
-- [x] `pnpm lint` / `pnpm typecheck` / `pnpm build` / `pnpm test` 全绿（62 个单测）
+- [x] `pnpm lint` / `pnpm typecheck` / `pnpm build` / `pnpm test` 全绿（89 个单测）
 
 ---
 
@@ -476,6 +497,9 @@ set-cookie: pp_anon=…; Path=/; Max-Age=31536000; Secure; HttpOnly; SameSite=la
 * `audio.test.ts`：三个音频的**引用路径契约**（固定为 `/audio/*.mp3`）、**文件缺席属合法状态**（仓库不含音频；
   自备素材若已放置则必须位于 `public/audio/` 且非空，防止误提交空占位文件）、压低音量必须小于默认音量、
   静音时恒为 0、`fadeVolume` 插值两端与越界夹取、「叮」的压低时长长于普通音效、开关状态的脏值解析
+* `stats.test.ts`：北京时间归档（UTC 16:30 归次日）、日期窗口与空档补 0、设备哈希稳定性与不可逆性、UA 粗分类、
+  来源域名解析（站内跳转不算来源）、聚合口径（PV 排除机器人、UV 去重、窗口外数据丢弃、进入率 / 完成率、回访设备）、
+  报告摘要的关键字段与口径说明
 
 ---
 
@@ -488,13 +512,13 @@ src/
 │  ├─ play/page.tsx               拼图
 │  ├─ gallery/page.tsx            解锁相册墙
 │  ├─ admin/page.tsx              管理后台
-│  └─ api/…                       random / url / gallery / unlocks / admin/* / og
+│  └─ api/…                       random / url / gallery / unlocks / visits / admin/* / og
 ├─ components/
 │  ├─ puzzle/                     puzzle-board / difficulty-picker / unlock-dialog / game-shell
 │  ├─ gallery/gallery-wall.tsx
-│  ├─ admin/                      admin-console / admin-upload-form
+│  ├─ admin/                      admin-console / admin-upload-form / stats-panel
 │  ├─ ui/                         shadcn/ui（CLI 生成）
-│  └─ share-button / sound-toggle / hidden-admin-trigger / local-stats
+│  └─ share-button / sound-toggle / hidden-admin-trigger / local-stats / visit-beacon
 ├─ hooks/                         use-local-progress / use-sound-enabled（useSyncExternalStore 订阅 localStorage）
 ├─ public/audio/                  音频占位目录（仓库不含音频文件，见该目录 README）
 ├─ lib/
@@ -505,6 +529,8 @@ src/
 │  ├─ storage.ts                     createSignedUrl / createSignedUploadUrl / 对象读写
 │  ├─ audio.ts                       BGM / 音效 / 压低策略（音量常量都在这里）
 │  ├─ image-server.ts (sharp) / image-client.ts (canvas)
+│  ├─ stats-core.ts                  访问统计聚合（纯函数，口径有单测）
+│  ├─ stats-format.ts                统计展示与 Markdown 报告文案（客户端也会引用）
 │  ├─ puzzle.ts / local-store.ts / validation.ts / http.ts
 │  └─ env.public.ts / env.server.ts / database.types.ts / types.ts
 └─ middleware.ts                  Supabase session 刷新 + 匿名 cookie 签发

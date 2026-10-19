@@ -5,6 +5,7 @@ import { Eye, EyeOff, Loader2, LogOut, ShieldCheck, Trash2 } from "lucide-react"
 import { toast } from "sonner";
 
 import { AdminUploadForm } from "@/components/admin/admin-upload-form";
+import { StatsPanel } from "@/components/admin/stats-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -129,6 +130,8 @@ export function AdminConsole() {
           退出
         </Button>
       </div>
+
+      <StatsPanel />
 
       <AdminUploadForm onUploaded={() => void loadPhotos()} />
 

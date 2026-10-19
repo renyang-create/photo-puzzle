@@ -58,6 +58,31 @@ export interface Database {
         Update: Partial<Omit<UnlockRow, "id" | "created_at">>;
         Relationships: [];
       };
+      visits: {
+        Row: {
+          id: number;
+          /** 北京时间归档日期 YYYY-MM-DD */
+          day: string;
+          device_hash: string;
+          /** 'view'（首页）| 'play'（拼图页） */
+          kind: string;
+          /** wechat | mobile | desktop | bot | other */
+          client: string | null;
+          referrer_host: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          day?: string;
+          device_hash: string;
+          kind: string;
+          client?: string | null;
+          referrer_host?: string | null;
+          created_at?: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
       admin_credentials: {
         Row: { id: number; password_hash: string; updated_at: string };
         Insert: { id?: number; password_hash: string; updated_at?: string };
