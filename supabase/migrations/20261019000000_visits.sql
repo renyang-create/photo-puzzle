@@ -32,5 +32,17 @@ create policy "visits admin read"
   to authenticated
   using (public.is_admin());
 
+-- ------------------------------------------------------------
+-- 授权（**必须显式写**，不要依赖项目的 default privileges）
+--
+-- 踩坑记录：只建表 + 开 RLS 时，service_role 插入直接报
+--   permission denied for table visits
+-- 因为 RLS 与「表级授权」是两件事：service_role 只**跳过 RLS**，
+-- 并不自动拥有表的 DML 权限。未显式 GRANT 时连服务端写都进不来。
+-- ------------------------------------------------------------
+grant all on public.visits to service_role;
+grant select on public.visits to authenticated;
+grant usage, select on sequence public.visits_id_seq to service_role;
+
 comment on table public.visits is
   '自建访问计数：只记日期、设备哈希、类型、粗分类客户端与来源域名；不存 IP 与 UA 原文。';
