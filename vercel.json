@@ -9,12 +9,6 @@
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
         { "key": "Cache-Control", "value": "no-store, max-age=0" }
       ]
-    },
-    {
-      "source": "/api/og",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=300, s-maxage=1800" }
-      ]
     }
   ]
 }
