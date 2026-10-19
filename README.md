@@ -305,6 +305,10 @@ supabase/migrations/
   * 进入率 = 拼图页 UV / 首页 UV；完成率 = 完成设备 / 拼图页 UV（基于设备数，比 PV 稳）
   * 回访设备 = 统计窗口内出现在 ≥ 2 个日期上的设备
 * **在哪看**：`/admin` 登录后顶部「数据概览」，可切 7 / 14 / 30 天；「复制报告」会生成一段 **Markdown 摘要**（概览 + 难度分布 + 来源 + 每日明细表 + 口径说明），可以直接贴进报告。
+* **脚本出报告**：`pnpm report`（近 30 天）或 `pnpm report 7`（近 7 天，7~90）。
+  脚本**直连 Supabase**，不依赖线上是否已部署、也不用登录后台；它复用 `src/lib/stats-core.ts`
+  的聚合函数与 `stats-format.ts` 的报告文案，因此**与后台面板共用同一套口径，数字必然一致**。
+  输出 = 控制台摘要 + 可直接粘贴的 Markdown。
 * **建表（只需一次）**：`pnpm db:push`，或打开 Supabase Dashboard → `SQL Editor`，粘贴 `supabase/migrations/20261019000000_visits.sql` 的内容执行。
 
 ### ⚠️ 免责与隐私提醒

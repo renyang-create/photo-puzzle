@@ -20,6 +20,14 @@ export function percent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+/**
+ * 转化率展示：**分母为 0 时显示「—」**。
+ * 否则「还没人进拼图页」会被写成「完成率 0.0%」，在报告里属于误导。
+ */
+export function rate(value: number, denominator: number): string {
+  return denominator > 0 ? percent(value) : "—";
+}
+
 function ratio(part: number, whole: number): number {
   return whole > 0 ? part / whole : 0;
 }
@@ -37,10 +45,10 @@ export function formatReport(
   lines.push("### 概览");
   lines.push(`- 首页访问：**${total.pv} PV / ${total.uv} UV**`);
   lines.push(
-    `- 进入拼图页：**${total.playPv} PV / ${total.playUv} UV**（进入率 ${percent(conversion.enterPlay)}）`,
+    `- 进入拼图页：**${total.playPv} PV / ${total.playUv} UV**（进入率 ${rate(conversion.enterPlay, total.uv)}）`,
   );
   lines.push(
-    `- 完成解锁：**${total.solveCount} 次 / ${total.solveDevices} 台设备**（完成率 ${percent(conversion.complete)}）`,
+    `- 完成解锁：**${total.solveCount} 次 / ${total.solveDevices} 台设备**（完成率 ${rate(conversion.complete, total.playUv)}）`,
   );
   lines.push(
     `- 回访设备：**${total.returnDevices} 台**（统计窗口内出现 ≥ 2 天）`,

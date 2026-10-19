@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiGet } from "@/lib/client-api";
-import { formatDuration, percent } from "@/lib/stats-format";
+import { formatDuration, rate } from "@/lib/stats-format";
 import type { StatsSummary } from "@/lib/stats-core";
 
 interface StatsResponse {
@@ -181,7 +181,7 @@ export function StatsPanel() {
             <Card
               label="进入拼图页"
               value={String(summary.total.playUv)}
-              hint={`UV · 进入率 ${percent(summary.conversion.enterPlay)}`}
+              hint={`UV · 进入率 ${rate(summary.conversion.enterPlay, summary.total.uv)}`}
             />
             <Card
               label="完成解锁"
@@ -190,7 +190,7 @@ export function StatsPanel() {
             />
             <Card
               label="完成率"
-              value={percent(summary.conversion.complete)}
+              value={rate(summary.conversion.complete, summary.total.playUv)}
               hint="完成设备 / 进入拼图页设备"
             />
           </div>

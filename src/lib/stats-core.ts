@@ -291,5 +291,8 @@ export function aggregate(input: {
   };
 }
 
-// 展示与报告文案在 ./stats-format（客户端也要用，不能带 node:crypto）
-export { formatDuration, formatReport, percent } from "./stats-format";
+// 展示与报告文案见 ./stats-format（客户端组件也要用，所以那边不带 node:crypto）。
+// ⚠️ 这里**故意不做** re-export：scripts/report.mjs 会用
+//    `node --experimental-strip-types` 直接加载本文件，
+//    而 stats-format 的内部 import 是 TS 风格（不带扩展名），Node ESM 解析不了。
+//    保持本文件只依赖 node:crypto，脚本与后台面板就能共用同一套聚合口径。
