@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ImageIcon, Puzzle, ShieldCheck } from "lucide-react";
 
+import { BirthdayCountdown } from "@/components/birthday-countdown";
 import { HiddenAdminTrigger } from "@/components/hidden-admin-trigger";
 import { LocalStats } from "@/components/local-stats";
 import { ShareButton } from "@/components/share-button";
@@ -67,6 +68,10 @@ export default function CoverPage() {
             </Link>
             <ShareButton className="flex-1" label="分享给朋友" />
           </div>
+        </div>
+
+        <div className="mt-6">
+          <BirthdayCountdown />
         </div>
 
         <div className="mt-8">
